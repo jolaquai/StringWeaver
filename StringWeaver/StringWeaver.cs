@@ -208,6 +208,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
+
+            version++;
             buffer[offset] = value;
         }
     }
@@ -235,6 +237,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
             }
+
+            version++;
             value.CopyTo(buffer.AsSpan(offset, length));
         }
     }
@@ -248,6 +252,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     public void Append(char value)
     {
         GrowIfNeeded(Length + 1);
+        version++;
         buffer[Length++] = value;
     }
     /// <summary>
@@ -1277,6 +1282,9 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
+
+        version++;
+
         var span = Span;
         var start = 0;
         while (start < span.Length && span[start] == value)
@@ -1300,6 +1308,9 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
+
+        version++;
+
         var span = Span;
         var start = 0;
         while (start < span.Length && values.IndexOf(span[start]) >= 0)
@@ -1324,6 +1335,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
+        version++;
+
         var span = Span;
         var end = span.Length - 1;
         while (end >= 0 && span[end] == value)
@@ -1342,6 +1355,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
+
+        version++;
 
         var span = Span;
         var end = span.Length - 1;
@@ -1382,6 +1397,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
+        version++;
+
         var span = Span;
         var start = 0;
         while (start <= span.Length - value.Length && span.Slice(start, value.Length).SequenceEqual(value))
@@ -1414,6 +1431,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
+        version++;
+
         var span = Span;
         var end = span.Length - value.Length;
         while (end >= 0 && span.Slice(end, value.Length).SequenceEqual(value))
@@ -1437,6 +1456,9 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             throw new ArgumentOutOfRangeException(nameof(length), "Length must be non-negative and not exceed the current length of the buffer.");
         }
+
+        version++;
+
         Length = length;
     }
     /// <summary>
@@ -1449,11 +1471,12 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative.");
         }
-        // 
+
+        version++;
+
         if (count > Length)
         {
             Clear();
-
         }
         Length -= count;
     }
@@ -1468,6 +1491,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         {
             throw new ArgumentOutOfRangeException(nameof(written), "Written length must be non-negative.");
         }
+
         // Safety hatch: attempts to expand beyond the current capacity almost certainly means this method is being misused
         // This should never happen in practice since this method is intended to be used like the combination of ArrayBufferWriter.GetSpan and ArrayBufferWriter.Advance
         if (Length + written > buffer.Length)
@@ -1475,6 +1499,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(written),
                 $"Cannot expand beyond the current capacity of the buffer. This might indicate misuse of {nameof(StringWeaver)}.{nameof(Expand)} since any call to it should be preceded by a method that directly or indirectly grows the buffer.");
         }
+
+        version++;
         Length += written;
     }
     /// <summary>
@@ -1521,21 +1547,21 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the default capacity of 256.
     /// </summary>
-    public StringWeaver() : this(ReadOnlySpan<char>.Empty, DefaultCapacity) { }
+    public StringWeaver() : this([], DefaultCapacity) { }
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the specified capacity.
     /// </summary>
     /// <param name="capacity">The initial capacity of the buffer's backing array.</param>
-    public StringWeaver(int capacity) : this(ReadOnlySpan<char>.Empty, capacity) { }
+    public StringWeaver(int capacity) : this([], capacity) { }
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the specified initial content.
     /// </summary>
-    /// <param name="initialContent">A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> that will be copied into the buffer.</param>
+    /// <param name="initialContent">A <see langword="string"/> that will be copied into the buffer.</param>
     public StringWeaver(string initialContent) : this(initialContent.AsSpan(), initialContent.Length) { }
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the specified initial content and capacity.
     /// </summary>
-    /// <param name="initialContent">The initial content to copy into the buffer.</param>
+    /// <param name="initialContent">A <see langword="string"/> that will be copied into the buffer.</param>
     /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the length of <paramref name="initialContent"/>.</param>
     public StringWeaver(string initialContent, int capacity) : this(initialContent.AsSpan(), capacity) { }
     /// <summary>
@@ -1648,6 +1674,18 @@ public sealed partial class StringWeaver : IBufferWriter<char>
 
         Span.CopyTo(destination.AsSpan(index));
     }
+    /// <summary>
+    /// Copies the contents of the used portion of the buffer to a block of memory beginning at the specified managed pointer.
+    /// </summary>
+    /// <param name="charPtr">The managed pointer to the destination memory block.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void CopyTo(scoped ref char charPtr) => Span.CopyTo(new Span<char>((char*)Unsafe.AsPointer(ref charPtr), Length));
+    /// <summary>
+    /// Copies the contents of the used portion of the buffer to a block of memory beginning at the specified unmanaged pointer.
+    /// </summary>
+    /// <param name="charPtr">The unmanaged pointer to the destination memory block.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void CopyTo(char* charPtr) => Span.CopyTo(new Span<char>(charPtr, Length));
     #endregion CopyTo
 
     #region Stream
@@ -1768,6 +1806,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     private volatile Stream weaverStream;
     /// <summary>
     /// Obtains a <see cref="Stream"/> implementation that allows treating a <see cref="StringWeaver"/> as a <see langword="byte"/> sink.
+    /// Calling this method multiple times without disposing of the returned <see cref="Stream"/> will return the same instance.
     /// </summary>
     /// <param name="encoding">The <see cref="Encoding"/> to use for converting <see langword="byte"/>s to <see langword="char"/>s. If <c>null</c>, <see cref="Encoding.Default"/> is used.</param>
     /// <returns>The <see cref="Stream"/> implementation.</returns>
@@ -1789,13 +1828,18 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// <summary>
     /// Grows <see cref="buffer"/> unconditionally, ensuring at least twice the previous capacity (if possible).
     /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Grow() => Grow(buffer.Length + 1);
     /// <summary>
     /// Grows <see cref="buffer"/> unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> characters.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void Grow(int requiredCapacity) => Array.Resize(ref buffer, Helpers.NextPowerOf2(requiredCapacity));
+    private void Grow(int requiredCapacity)
+    {
+        version++;
+
+        Array.Resize(ref buffer, Helpers.NextPowerOf2(requiredCapacity));
+    }
     #endregion
 
     #region IBufferWriter<char> impl
@@ -1810,6 +1854,22 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
     public override string ToString() => Span.ToString();
+    /// <summary>
+    /// Creates a <see langword="string"/> from the current contents of the buffer, then clears the buffer for re-use.
+    /// </summary>
+    /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
+    public string Drain() => Drain(false);
+    /// <summary>
+    /// Creates a <see langword="string"/> from the current contents of the buffer, then clears the buffer for re-use, optionally wiping its contents.
+    /// </summary>
+    /// <param name="wipe">Whether to wipe the contents of the buffer when clearing it.</param>
+    /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
+    public string Drain(bool wipe)
+    {
+        var str = ToString();
+        Clear(wipe);
+        return str;
+    }
 }
 
 internal static class Extensions
