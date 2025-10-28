@@ -1,11 +1,11 @@
 ﻿using System.Buffers;
-using System.Diagnostics;
-using System.IO.Hashing;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 
 using PCRE;
+
+#pragma warning disable CA1510 // Prevents further fragmentation of code paths between TargetFrameworks for no reason
 
 namespace StringWeaver;
 
@@ -16,9 +16,9 @@ namespace StringWeaver;
 /// <returns>The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</returns>
 public delegate ReadOnlySpan<char> StringWeaverReplacementFactory(ReadOnlySpan<char> match);
 /// <summary>
-/// Represents a method that writes a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to a given buffer.
+/// Represents a method that writes a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to a given weaver.
 /// </summary>
-/// <param name="buffer">The buffer to write the replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to.</param>
+/// <param name="buffer">the buffer to write the replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to.</param>
 /// <param name="match">The matched <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
 public delegate void StringWeaverWriter(Span<char> buffer, ReadOnlySpan<char> match);
 
@@ -28,37 +28,37 @@ public delegate void StringWeaverWriter(Span<char> buffer, ReadOnlySpan<char> ma
 /// <remarks>
 /// This type is not thread-safe. Concurrent use will result in corrupted data. Access to instances of this type must be synchronized.
 /// </remarks>
-public sealed partial class StringWeaver
+public sealed partial class StringWeaver : IBufferWriter<char>
 {
     #region Enumerator ref structs
     /// <summary>
     /// Used by <see cref="StringWeaver"/> to allow enumeration of indices of a specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in the buffer, starting from a specified index.
-    /// During the enumeration, modification of the underlying buffer is considered undefined behavior.
+    /// During the enumeration, modification of the underlying <see cref="StringWeaver"/> is considered undefined behavior.
     /// </summary>
     public ref struct UnsafeIndexEnumerator
     {
-        private readonly StringWeaver _buffer;
+        private readonly StringWeaver _weaver;
         private readonly ReadOnlySpan<char> _value;
         private int nextSearchIndex;
 
         internal UnsafeIndexEnumerator(StringWeaver buffer, ReadOnlySpan<char> value, int start)
         {
-            _buffer = buffer;
+            _weaver = buffer;
             _value = value;
             nextSearchIndex = start;
         }
 
         /// <summary>
-        /// Advances the enumerator to the next index of the specified value in the buffer.
+        /// Advances the enumerator to the next index of the specified value in the <see cref="StringWeaver"/>.
         /// </summary>
         /// <returns><see langword="true"/> if advancement was successful; otherwise, <see langword="false"/>.</returns>
         public bool MoveNext()
         {
-            if (nextSearchIndex >= _buffer.Length)
+            if (nextSearchIndex >= _weaver.Length)
             {
                 return false;
             }
-            var index = _buffer.IndexOf(_value, nextSearchIndex);
+            var index = _weaver.IndexOf(_value, nextSearchIndex);
             if (index != -1)
             {
                 Current = index;
@@ -82,36 +82,36 @@ public sealed partial class StringWeaver
     /// </summary>
     public ref struct IndexEnumerator
     {
-        private readonly StringWeaver _buffer;
+        private readonly ulong _version;
+        private readonly StringWeaver _weaver;
         private readonly ReadOnlySpan<char> _value;
-        private readonly ulong _hash;
         private int nextSearchIndex;
 
-        internal IndexEnumerator(StringWeaver buffer, ReadOnlySpan<char> value, int start)
+        internal IndexEnumerator(StringWeaver weaver, ReadOnlySpan<char> value, int start)
         {
-            _buffer = buffer;
+            _weaver = weaver;
             _value = value;
             Current = -1;
             nextSearchIndex = start;
-            _hash = XxHash3.HashToUInt64(MemoryMarshal.Cast<char, byte>(_buffer.Span));
+            _version = weaver.version;
         }
 
         /// <summary>
-        /// Advances the enumerator to the next index of the specified value in the buffer.
+        /// Advances the enumerator to the next index of the specified value in the <see cref="StringWeaver"/>.
         /// </summary>
         /// <returns>><see langword="true"/> if advancement was successful; otherwise, <see langword="false"/>.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when the underlying buffer was modified during enumeration.</exception>
+        /// <exception cref="InvalidOperationException">Thrown when the underlying <see cref="StringWeaver"/> was modified during enumeration.</exception>
         public bool MoveNext()
         {
-            if (nextSearchIndex >= _buffer.Length)
+            if (nextSearchIndex >= _weaver.Length)
             {
                 return false;
             }
 
-            var index = _buffer.IndexOf(_value, nextSearchIndex);
+            var index = _weaver.IndexOf(_value, nextSearchIndex);
             if (index != -1)
             {
-                if (_hash != XxHash3.HashToUInt64(MemoryMarshal.Cast<char, byte>(_buffer.Span)))
+                if (_version != _weaver.version)
                 {
                     throw new InvalidOperationException("The buffer was modified; enumeration may not continue.");
                 }
@@ -144,6 +144,7 @@ public sealed partial class StringWeaver
     #endregion
 
     #region Instance fields
+    private ulong version;
     private char[] buffer;
     #endregion
 
@@ -159,30 +160,40 @@ public sealed partial class StringWeaver
     /// <summary>
     /// Gets the amount of available space beyond the used portion of the buffer that can be written to without forcing a resize.
     /// </summary>
-    public int FreeCapacity => buffer.Length - Length;
+    public int FreeCapacity => FreeCapacity;
 
+    /// <summary>
+    /// Gets a mutable <see cref="Memory{T}"/> over the used portion of the buffer (not including unused space).
+    /// </summary>
+    /// <remarks>
+    /// To obtain a writable <see cref="Memory{T}"/> that can be used to add content beyond the current <see cref="Length"/>, use <see cref="GetWritableMemory(int)"/> instead.
+    /// </remarks>
+    public Memory<char> Memory => buffer.AsMemory(0, Length);
     /// <summary>
     /// Gets a mutable <see cref="Span{T}"/> over the used portion of the buffer (not including unused space).
     /// </summary>
+    /// <remarks>
+    /// To obtain a writable <see cref="Span{T}"/> that can be used to add content beyond the current <see cref="Length"/>, use <see cref="GetWritableSpan(int)"/> instead.
+    /// </remarks>
     public Span<char> Span => buffer.AsSpan(0, Length);
     /// <summary>
     /// Gets or sets the <see langword="char"/> at the specified index in the used portion of the buffer.
     /// </summary>
     /// <param name="index">The index of the <see langword="char"/> to get or set.</param>
     /// <returns>The <see langword="char"/> at the specified index.</returns>
-    /// <exception cref="IndexOutOfRangeException">Thrown when <paramref name="index"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="index"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
     public char this[Index index]
     {
         get
         {
             if (index.Value < 0)
             {
-                throw new IndexOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             var offset = index.GetOffset(Length);
             if (offset < 0 || offset >= Length)
             {
-                throw new IndexOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             return buffer[offset];
         }
@@ -190,14 +201,41 @@ public sealed partial class StringWeaver
         {
             if (index.Value < 0)
             {
-                throw new IndexOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             var offset = index.GetOffset(Length);
             if (offset < 0 || offset >= Length)
             {
-                throw new IndexOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             buffer[offset] = value;
+        }
+    }
+    /// <summary>
+    /// Gets or sets a <see cref="Range"/> of <see langword="char"/> in the used portion of the buffer.
+    /// </summary>
+    /// <param name="range">The <see cref="Range"/> of <see langword="char"/> to get or set.</param>
+    /// <returns>A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> that represents the specified range.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when the <see cref="Range"/> does not resolve to a location entirely within the bounds of the used portion of the buffer.</exception>
+    public Span<char> this[Range range]
+    {
+        get
+        {
+            var (offset, length) = range.GetOffsetAndLength(Length);
+            if (offset < 0 || offset >= Length || length < 0 || offset + length > Length)
+            {
+                throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
+            }
+            return buffer.AsSpan(offset, length);
+        }
+        set
+        {
+            var (offset, length) = range.GetOffsetAndLength(Length);
+            if (offset < 0 || offset >= Length || length < 0 || offset + length > Length)
+            {
+                throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
+            }
+            value.CopyTo(buffer.AsSpan(offset, length));
         }
     }
     #endregion
@@ -216,7 +254,7 @@ public sealed partial class StringWeaver
     /// Appends a <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to the end of the buffer.
     /// </summary>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to append.</param>
-    public void Append(ReadOnlySpan<char> value)
+    public void Append(scoped ReadOnlySpan<char> value)
     {
         if (value.Length == 0)
         {
@@ -231,6 +269,63 @@ public sealed partial class StringWeaver
     /// <param name="value">The <see cref="string"/> to append.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Append(string value) => Append(value.AsSpan());
+    /// <summary>
+    /// Appends a section of a <see langword="char"/> array to the end of the buffer.
+    /// </summary>
+    /// <param name="chars">The <see langword="char"/> array containing the block to append.</param>
+    /// <param name="index">The starting index in the <see langword="char"/> array.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    public void Append(char[] chars, int index, int length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+        if (chars is null)
+        {
+            throw new ArgumentNullException(nameof(chars), "Array cannot be null.");
+        }
+        if (index < 0 || length < 0 || index + length > chars.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index), "Index and length must specify a valid range within the array.");
+        }
+        var span = new ReadOnlySpan<char>(chars, index, length);
+        Append(span);
+    }
+    /// <summary>
+    /// Appends a block of <see langword="char"/>s beginning at the specified managed charPtr to the end of the buffer.
+    /// </summary>
+    /// <param name="charPtr">The managed charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void Append(scoped ref readonly char charPtr, int length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+
+        Append((char*)Unsafe.AsPointer(ref Unsafe.AsRef(in charPtr)), length);
+    }
+    /// <summary>
+    /// Appends a block of <see langword="char"/>s beginning at the specified unmanaged charPtr to the end of the buffer.
+    /// </summary>
+    /// <param name="charPtr">The unmanaged charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    public unsafe void Append(char* charPtr, int length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+        if ((IntPtr)charPtr == IntPtr.Zero)
+        {
+            throw new ArgumentNullException(nameof(charPtr), "Pointer cannot be null.");
+        }
+
+        scoped var span = new ReadOnlySpan<char>(charPtr, length);
+        Append(span);
+    }
 
 #if NET6_0_OR_GREATER
     /// <summary>
@@ -279,6 +374,7 @@ public sealed partial class StringWeaver
     /// <param name="value">The <see langword="char"/> to find.</param>
     /// <param name="start">At which index in the buffer to start searching.</param>
     /// <returns>The index of the first occurrence of <paramref name="value"/> in the buffer, or <c>-1</c> if not found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int IndexOf(char value, int start = 0)
     {
@@ -300,6 +396,7 @@ public sealed partial class StringWeaver
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
     /// <param name="start">At which index in the buffer to start searching.</param>
     /// <returns>The index of the first occurrence of <paramref name="value"/> in the buffer, or <c>-1</c> if not found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int IndexOf(ReadOnlySpan<char> value, int start = 0)
     {
@@ -347,10 +444,10 @@ public sealed partial class StringWeaver
     public IEnumerable<int> EnumerateIndicesOf(char value, int start = 0)
     {
         var index = start;
-        var bufHash = XxHash3.HashToUInt64(MemoryMarshal.Cast<char, byte>(Span));
+        var beginVersion = version;
         while ((index = IndexOf(value, index)) != -1)
         {
-            if (bufHash != XxHash3.HashToUInt64(MemoryMarshal.Cast<char, byte>(Span)))
+            if (beginVersion != version)
             {
                 throw new InvalidOperationException("The buffer was modified during enumeration.");
             }
@@ -358,7 +455,140 @@ public sealed partial class StringWeaver
             index++;
         }
     }
-    // TODO: Fix this span shit, will probably have to go the struct-based enumerator route...
+
+    /// <summary>
+    /// Finds the first occurrence of any of the specified <paramref name="chars"/> in the used portion of the buffer.
+    /// </summary>
+    /// <param name="chars">A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> containing the characters to search for.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any of the specified <paramref name="chars"/> in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAny(ReadOnlySpan<char> chars, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAny(chars);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+#if NET7_0_OR_GREATER
+    /// <summary>
+    /// Finds the first occurrence of any character not in the specified <paramref name="chars"/> in the used portion of the buffer.
+    /// </summary>
+    /// <param name="chars">A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> containing the characters to exclude from the search.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any character not in the specified <paramref name="chars"/> in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAnyExcept(ReadOnlySpan<char> chars, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAnyExcept(chars);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+#endif
+#if NET8_0_OR_GREATER
+    /// <summary>
+    /// Finds the first occurrence of any character within the specified inclusive range in the used portion of the buffer.
+    /// </summary>
+    /// <param name="lowInclusive">The inclusive lower bound of the character range.</param>
+    /// <param name="highInclusive">The inclusive upper bound of the character range.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any character within the specified range in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAnyInRange(char lowInclusive, char highInclusive, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAnyInRange(lowInclusive, highInclusive);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+    /// <summary>
+    /// Finds the first occurrence of any character outside the specified inclusive range in the used portion of the buffer.
+    /// </summary>
+    /// <param name="lowInclusive">The inclusive lower bound of the character range.</param>
+    /// <param name="highInclusive">The inclusive upper bound of the character range.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any character outside the specified range in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAnyExceptInRange(char lowInclusive, char highInclusive, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAnyExceptInRange(lowInclusive, highInclusive);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+    /// <summary>
+    /// Finds the first occurrence of any of those in the collection of characters represented by the specified <paramref name="searchValues"/> instance in the used portion of the buffer.
+    /// </summary>
+    /// <param name="searchValues">The <see cref="SearchValues{T}"/> instance representing the characters to search for.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any of the specified characters in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAny(SearchValues<char> searchValues, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAny(searchValues);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+    /// <summary>
+    /// Finds the first occurrence of any character outside the collection of characters represented by the specified <paramref name="searchValues"/> instance in the used portion of the buffer.
+    /// </summary>
+    /// <param name="searchValues">The <see cref="SearchValues{T}"/> instance representing the characters to exclude from the search.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first occurrence of any character not in the specified collection in the buffer, or <c>-1</c> if none are found.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOfAnyExcept(SearchValues<char> searchValues, int start = 0)
+    {
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var idx = Span[start..].IndexOfAnyExcept(searchValues);
+        if (idx == -1)
+        {
+            return -1;
+        }
+        return idx + start;
+    }
+#endif
+
     /// <summary>
     /// Enumerates all indices of a specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in the buffer, starting from the specified index.
     /// </summary>
@@ -388,6 +618,8 @@ public sealed partial class StringWeaver
     /// </summary>
     private void ReplaceCore(int index, int len, ReadOnlySpan<char> to)
     {
+        version++;
+
         if (to.Length == 0)
         {
             // Copy everything after index + len TO the index
@@ -435,6 +667,8 @@ public sealed partial class StringWeaver
     /// </summary>
     private void ReplaceCore(ReadOnlySpan<int> indices, int len, ReadOnlySpan<char> to)
     {
+        version++;
+
         var lengthDiff = to.Length - len;
         var totalLengthChange = lengthDiff * indices.Length;
 
@@ -597,6 +831,7 @@ public sealed partial class StringWeaver
     /// <param name="length">The length of the range to replace.</param>
     /// <param name="to">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to replace the specified range with.</param>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when the range defined by <paramref name="index"/> and <paramref name="length"/> resolves to a location not entirely within the bounds of the used portion of the buffer, or when <paramref name="length"/> is less than or equal to zero.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(int index, int length, ReadOnlySpan<char> to)
     {
         if (index < 0 || index >= Length || length <= 0 || index + length > Length)
@@ -673,7 +908,7 @@ public sealed partial class StringWeaver
             throw new ArgumentNullException(nameof(writeReplacementAction), "Write replacement action cannot be null.");
         }
 
-        Span<char> buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
+        var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         var match = regex.Match(Span);
         writeReplacementAction(buffer, Span.Slice(match));
         var endIdx = buffer.IndexOf('\0');
@@ -713,7 +948,7 @@ public sealed partial class StringWeaver
         }
 
         using var matchBuffer = regex.CreateMatchBuffer();
-        Span<char> buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
+        var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         PcreRefMatch match;
         var start = 0;
         while ((match = matchBuffer.Match(Span, start)).Success)
@@ -760,7 +995,7 @@ public sealed partial class StringWeaver
             throw new ArgumentNullException(nameof(writeReplacementAction), "Write replacement action cannot be null.");
         }
 
-        Span<char> buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
+        var buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
         var match = regex.Match(Span);
 
         writeReplacementAction(buffer, Span.Slice(match));
@@ -795,7 +1030,7 @@ public sealed partial class StringWeaver
         }
 
         using var matchBuffer = regex.CreateMatchBuffer();
-        Span<char> buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
+        var buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
         buffer.Clear();
 
         PcreRefMatch match;
@@ -869,7 +1104,7 @@ public sealed partial class StringWeaver
             return;
         }
 
-        Span<char> buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
+        var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         foreach (var vm in regex.EnumerateMatches(Span))
         {
             writeReplacementAction(buffer, Span.Slice(vm));
@@ -903,7 +1138,7 @@ public sealed partial class StringWeaver
             return;
         }
 
-        Span<char> buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
+        var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         var currentEnumerator = regex.EnumerateMatches(Span);
         foreach (var vm in currentEnumerator)
         {
@@ -945,7 +1180,7 @@ public sealed partial class StringWeaver
             return;
         }
 
-        Span<char> buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
+        var buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
         foreach (var vm in regex.EnumerateMatches(Span))
         {
             writeReplacementAction(buffer, Span.Slice(vm));
@@ -973,7 +1208,7 @@ public sealed partial class StringWeaver
             return;
         }
 
-        Span<char> buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
+        var buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
         var currentEnumerator = regex.EnumerateMatches(Span);
         foreach (var vm in currentEnumerator)
         {
@@ -1243,23 +1478,30 @@ public sealed partial class StringWeaver
         Length += written;
     }
     /// <summary>
+    /// Gets a <see cref="Memory{T}"/> that can be used to write further content to the buffer.
+    /// When using this method, <see cref="Expand(int)"/> must be called immediately after, specifying the exact number of characters written to the buffer.
+    /// </summary>
+    /// <param name="minimumSize">A minimum size of the returned <see cref="Memory{T}"/>. If unspecified or less than or equal to <c>0</c>, some non-zero-length <see cref="Memory{T}"/> will be returned.</param>
+    /// <returns>The writable <see cref="Memory{T}"/> over the buffer.</returns>
+    public Memory<char> GetWritableMemory(int minimumSize = 0)
+    {
+        if (minimumSize <= 0)
+        {
+            return buffer.AsMemory(Length);
+        }
+        if (minimumSize > FreeCapacity)
+        {
+            GrowIfNeeded(Length + minimumSize);
+        }
+        return buffer.AsMemory(Length, FreeCapacity);
+    }
+    /// <summary>
     /// Gets a <see cref="Span{T}"/> that can be used to write further content to the buffer.
     /// When using this method, <see cref="Expand(int)"/> must be called immediately after, specifying the exact number of characters written to the buffer.
     /// </summary>
     /// <param name="minimumSize">A minimum size of the returned <see cref="Span{T}"/>. If unspecified or less than or equal to <c>0</c>, some non-zero-length <see cref="Span{T}"/> will be returned.</param>
     /// <returns>The writable <see cref="Span{T}"/> over the buffer.</returns>
-    public Span<char> GetWritableSpan(int minimumSize = 0)
-    {
-        if (minimumSize <= 0)
-        {
-            return buffer.AsSpan(Length);
-        }
-        if (minimumSize > buffer.Length - Length)
-        {
-            GrowIfNeeded(Length + minimumSize);
-        }
-        return buffer.AsSpan(Length, buffer.Length - Length);
-    }
+    public Span<char> GetWritableSpan(int minimumSize = 0) => GetWritableMemory(minimumSize).Span;
     /// <summary>
     /// Grows the buffer to ensure it can accommodate at least the specified capacity.
     /// </summary>
@@ -1357,8 +1599,179 @@ public sealed partial class StringWeaver
     public void Clear(bool wipe)
     {
         Length = 0;
-        buffer.AsSpan().Clear();
+        if (wipe)
+        {
+            buffer.AsSpan().Clear();
+        }
     }
+    #endregion
+
+    #region CopyTo
+    /// <summary>
+    /// Copies the contents of the used portion of the buffer into the specified <paramref name="destination"/> <see cref="Span{T}"/> of <see langword="char"/>.
+    /// </summary>
+    /// <param name="destination">The destination <see cref="Span{T}"/> of <see langword="char"/> to copy the buffer contents into.</param>
+    /// <exception cref="ArgumentException">Thrown when the length of <paramref name="destination"/> is less than the length of the used portion of the buffer.</exception>
+    public void CopyTo(Span<char> destination)
+    {
+        if (destination.Length < Length)
+        {
+            throw new ArgumentException("Destination span is not large enough to hold the contents of the buffer.", nameof(destination));
+        }
+        Span.CopyTo(destination);
+    }
+    /// <summary>
+    /// Copies the contents of the used portion of the buffer into the specified <paramref name="destination"/> <see cref="Memory{T}"/> of <see langword="char"/>.
+    /// </summary>
+    /// <param name="destination">The destination <see cref="Memory{T}"/> of <see langword="char"/> to copy the buffer contents into.</param>
+    /// <exception cref="ArgumentException">Thrown when the length of <paramref name="destination"/> is less than the length of the used portion of the buffer.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void CopyTo(Memory<char> destination) => CopyTo(destination.Span);
+    /// <summary>
+    /// Copies the contents of the used portion of the buffer into the specified <paramref name="destination"/> <see langword="char"/> array.
+    /// </summary>
+    /// <param name="destination">The destination <see langword="char"/> array to copy the buffer contents into.</param>
+    /// <param name="index"></param>
+    /// <exception cref="ArgumentException">Thrown when the length of <paramref name="destination"/> minus <paramref name="index"/> is less than the length of the used portion of the buffer.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="index"/> is negative or exceeds the length of <paramref name="destination"/>.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void CopyTo(char[] destination, int index)
+    {
+        if (index < 0 || index > destination.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index), "Index is out of bounds of the destination array.");
+        }
+        if (destination.Length - index < Length)
+        {
+            throw new ArgumentException("Destination array is not large enough to hold the contents of the buffer.", nameof(destination));
+        }
+
+        Span.CopyTo(destination.AsSpan(index));
+    }
+    #endregion CopyTo
+
+    #region Stream
+    private sealed class WeaverStream(StringWeaver weaver, Encoding encoding) : Stream
+    {
+        private StringWeaver _weaver = weaver;
+        private readonly Decoder _decoder = encoding.GetDecoder();
+
+        private void EnsureUsable()
+        {
+            if (_weaver is null)
+            {
+                throw new ObjectDisposedException(nameof(StringWeaver), "The Stream has been disposed.");
+            }
+        }
+
+        public override bool CanRead
+        {
+            get
+            {
+                EnsureUsable();
+                return false;
+            }
+        }
+        public override bool CanSeek
+        {
+            get
+            {
+                EnsureUsable();
+                return false;
+            }
+        }
+        public override bool CanWrite
+        {
+            get
+            {
+                EnsureUsable();
+                return true;
+            }
+        }
+        public override long Length
+        {
+            get
+            {
+                EnsureUsable();
+                throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
+            }
+        }
+
+        public override long Position
+        {
+            get
+            {
+                EnsureUsable();
+                throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
+            }
+            set
+            {
+                EnsureUsable();
+                throw new NotSupportedException($"Cannot seek a {nameof(StringWeaver)} stream.");
+            }
+        }
+
+        public override void Flush() => EnsureUsable();
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            EnsureUsable();
+            throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
+        }
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            EnsureUsable();
+            throw new NotSupportedException($"Cannot seek a {nameof(StringWeaver)} stream.");
+        }
+        public override void SetLength(long value)
+        {
+            EnsureUsable();
+            throw new NotSupportedException($"Cannot set length of a {nameof(StringWeaver)} stream.");
+        }
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            EnsureUsable();
+            if (buffer is null)
+            {
+                throw new ArgumentNullException(nameof(buffer));
+            }
+            if (offset < 0 || count < 0 || offset + count > buffer.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(offset), $"{nameof(offset)} and {nameof(count)} must specify a valid range in the buffer.");
+            }
+
+            var source = buffer.AsSpan(offset, count);
+            var charCount = _decoder.GetCharCount(buffer, offset, count);
+            var destination = _weaver.GetWritableSpan(charCount);
+            System.Diagnostics.Debug.Assert(destination.Length != 0, "destination buffer returned must never be 0-length");
+            unsafe
+            {
+                var srcPtr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(source));
+                var destPtr = (char*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination));
+                var written = _decoder.GetChars(srcPtr, source.Length, destPtr, charCount, true);
+                _weaver.Expand(written);
+            }
+        }
+
+        /// <summary>
+        /// Releases the reference to the underlying <see cref="StringWeaver"/>.
+        /// </summary>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _weaver.weaverStream = null;
+                _weaver = null;
+            }
+            base.Dispose(disposing);
+        }
+    }
+    private volatile Stream weaverStream;
+    /// <summary>
+    /// Obtains a <see cref="Stream"/> implementation that allows treating a <see cref="StringWeaver"/> as a <see langword="byte"/> sink.
+    /// </summary>
+    /// <param name="encoding">The <see cref="Encoding"/> to use for converting <see langword="byte"/>s to <see langword="char"/>s. If <c>null</c>, <see cref="Encoding.Default"/> is used.</param>
+    /// <returns>The <see cref="Stream"/> implementation.</returns>
+    public Stream GetStream(Encoding encoding = null) => weaverStream ??= new WeaverStream(this, encoding ?? Encoding.Default);
     #endregion
 
     #region Implementation details
@@ -1385,6 +1798,12 @@ public sealed partial class StringWeaver
     private void Grow(int requiredCapacity) => Array.Resize(ref buffer, Helpers.NextPowerOf2(requiredCapacity));
     #endregion
 
+    #region IBufferWriter<char> impl
+    void IBufferWriter<char>.Advance(int count) => Expand(count);
+    Memory<char> IBufferWriter<char>.GetMemory(int sizeHint) => GetWritableMemory(sizeHint);
+    Span<char> IBufferWriter<char>.GetSpan(int sizeHint) => GetWritableSpan(sizeHint);
+    #endregion IBufferWriter<char> impl
+
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer.
     /// If a <see cref="ReadOnlySpan{T}"/> would suffice, use <see cref="Span"/> instead.
@@ -1403,8 +1822,3 @@ internal static class Extensions
     public static Span<T> Slice<T>(this Span<T> span, ValueMatch vm) => span.Slice(vm.Index, vm.Length);
 #endif
 }
-
-/// <summary>
-/// [Experimental] Unsafe sibling implementation of <see cref="StringWeaver"/> that utilizes unmanaged memory to alleviate GC pressure for very large buffers.
-/// </summary>
-internal sealed class UnsafeStringWeaver;
