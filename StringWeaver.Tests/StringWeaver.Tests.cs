@@ -1,11 +1,14 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
-using Xunit;
-using Xunit.v3;
+using System.IO;
 
 using PCRE;
+
+using Xunit;
 
 namespace StringWeaver.Tests;
 
@@ -18,7 +21,7 @@ public class StringWeaverTests
         var sb = new StringWeaver();
         Assert.Equal(0, sb.Length);
         Assert.True(sb.Capacity >= 256); // Default capacity
-        Assert.Equal(string.Empty, sb.ToString());
+        Assert.Equal("", sb.ToString());
     }
 
     [Fact]
@@ -490,7 +493,7 @@ public class StringWeaverTests
 
         Assert.Equal(0, sb.Length);
         Assert.Equal(capacity, sb.Capacity);
-        Assert.Equal(string.Empty, sb.ToString());
+        Assert.Equal("", sb.ToString());
     }
 
     [Fact]
@@ -500,7 +503,7 @@ public class StringWeaverTests
         sb.Clear(true);
 
         Assert.Equal(0, sb.Length);
-        Assert.Equal(string.Empty, sb.ToString());
+        Assert.Equal("", sb.ToString());
     }
     #endregion
 
@@ -535,7 +538,6 @@ public class StringWeaverTests
     #endregion
 
     #region Regex Tests
-#if NET7_0_OR_GREATER
     [Fact]
     public void Replace_Regex_ReplacesFirst()
     {
@@ -578,7 +580,6 @@ public class StringWeaverTests
         });
         Assert.Equal("Hello [NUM] World", sb.ToString());
     }
-#else
     [Fact]
     public void Replace_PcreRegex_ReplacesFirst()
     {
@@ -596,7 +597,6 @@ public class StringWeaverTests
         sb.ReplaceAll(regex, "XXX".AsSpan());
         Assert.Equal("Hello XXX World XXX", sb.ToString());
     }
-#endif
     #endregion
 
     #region ISpanFormattable Tests
@@ -618,64 +618,562 @@ public class StringWeaverTests
     }
     #endregion
 
-    #region Edge Cases and Stress Tests
+    #region Additional Coverage Tests
     [Fact]
-    public void LargeBuffer_HandlesCorrectly()
+    public void Memory_Property_ReturnsCorrectMemory()
     {
-        var sb = new StringWeaver();
-        var largeString = new string('X', 10000);
-        sb.Append(largeString.AsSpan());
-
-        Assert.Equal(10000, sb.Length);
-        Assert.Equal(largeString, sb.ToString());
+        var sb = new StringWeaver("Hello");
+        var mem = sb.Memory;
+        Assert.Equal(5, mem.Length);
+        Assert.Equal("Hello", mem.Span.ToString());
     }
 
     [Fact]
-    public void MultipleGrows_MaintainsContent()
+    public void RangeIndexer_Get_ReturnsSlice()
     {
-        var sb = new StringWeaver(2);
-        for (var i = 0; i < 100; i++)
+        var sb = new StringWeaver("HelloWorld");
+        var slice = sb[0..5];
+        Assert.Equal("Hello", slice.ToString());
+    }
+
+    [Fact]
+    public void RangeIndexer_Set_WritesSlice()
+    {
+        var sb = new StringWeaver("HelloWorld");
+        var span = sb[5..10];
+        "Earth".AsSpan().CopyTo(span);
+        Assert.Equal("HelloEarth", sb.ToString());
+    }
+
+    [Fact]
+    public void RangeIndexer_OutOfRange_Throws()
+    {
+        var sb = new StringWeaver("Test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => { var _ = sb[5..6]; });
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
         {
-            sb.Append($"Item{i} ".AsSpan());
-        }
-
-        Assert.Contains("Item0", sb.ToString());
-        Assert.Contains("Item99", sb.ToString());
+            Span<char> replacement = new char[1] { 'X' };
+            sb[5..6] = replacement; // out of range setter
+        });
     }
 
     [Fact]
-    public void ComplexOperationSequence_ProducesCorrectResult()
+    public void Append_ArraySection_Appends()
     {
-        var sb = new StringWeaver("  Hello World  ");
-        sb.Trim(' ');
-        sb.Replace("World".AsSpan(), "Universe".AsSpan());
-        sb.Append("!");
-        sb.ReplaceAll('l', 'w');
-
-        Assert.Equal("Hewwo Universe!", sb.ToString());
+        var chars = "HelloWorld".ToCharArray();
+        var sb = new StringWeaver();
+        sb.Append(chars, 0, 5);
+        sb.Append(chars, 5, 5);
+        Assert.Equal("HelloWorld", sb.ToString());
     }
 
     [Fact]
-    public void ReplaceAll_OverlappingPatterns_HandlesCorrectly()
-    {
-        var sb = new StringWeaver("aaaa");
-        var chars = new char[] { 'a', 'a' };
-        sb.ReplaceAll(chars.AsSpan(), chars.AsSpan());
-        Assert.Equal("aaaa", sb.ToString());
-    }
-
-    [Fact]
-    public void EmptyBuffer_OperationsHandleGracefully()
+    public void Append_ArraySection_InvalidArgs_Throw()
     {
         var sb = new StringWeaver();
+        Assert.Throws<ArgumentNullException>(() => sb.Append((char[])null!, 0, 1));
+        var chars = "Hi".ToCharArray();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Append(chars, -1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Append(chars, 0, 5));
+    }
 
-        sb.Trim(' ');
-        sb.TrimStart('x');
-        sb.TrimEnd('y');
-        sb.Clear();
+    [Fact]
+    public void Append_RefChar_AppendsBlock()
+    {
+        var data = "Block".ToCharArray();
+        var sb = new StringWeaver("Start-");
+        sb.Append(in data[0], data.Length);
+        Assert.Equal("Start-Block", sb.ToString());
+    }
 
-        Assert.Equal(-1, sb.IndexOf('a'));
-        Assert.Equal(string.Empty, sb.ToString());
+    [Fact]
+    public void Append_SpanFormattable_GrowPath()
+    {
+        var sb = new StringWeaver(4); // very small capacity
+        var big = new GrowFormat("ABCDEFGH"); // needs8 chars
+        sb.Append(big, default);
+        Assert.Equal("ABCDEFGH", sb.ToString());
+    }
+
+    [Fact]
+    public void IndexOfAny_FindsChar()
+    {
+        var sb = new StringWeaver("abcdef");
+        Assert.Equal(2, sb.IndexOfAny("xyzcd".AsSpan()));
+        Assert.Equal(-1, sb.IndexOfAny("XYZ".AsSpan()));
+    }
+
+    [Fact]
+    public void IndexOfAny_InvalidStart_Throws()
+    {
+        var sb = new StringWeaver("abc");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.IndexOfAny("a".AsSpan(), -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.IndexOfAny("a".AsSpan(), 4));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_FindsDifferentChar()
+    {
+        var sb = new StringWeaver("aaab");
+        Assert.Equal(3, sb.IndexOfAnyExcept("a".AsSpan()));
+    }
+
+    [Fact]
+    public void IndexOfAnyInRange_FindsInRange()
+    {
+        var sb = new StringWeaver("hello");
+        Assert.Equal(0, sb.IndexOfAnyInRange('a', 'h'));
+        Assert.Equal(-1, sb.IndexOfAnyInRange('x', 'z'));
+    }
+
+    [Fact]
+    public void IndexOfAnyExceptInRange_FindsOutsideRange()
+    {
+        var sb = new StringWeaver("abcdx");
+        Assert.Equal(4, sb.IndexOfAnyExceptInRange('a', 'd'));
+    }
+
+    [Fact]
+    public void IndexOfAny_SearchValues_Works()
+    {
+        var sv = SearchValues.Create("xyz".AsSpan());
+        var sb = new StringWeaver("hello x");
+        Assert.Equal(6, sb.IndexOfAny(sv));
+        Assert.Equal(-1, sb.IndexOfAny(SearchValues.Create("123".AsSpan())));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_SearchValues_Works()
+    {
+        var sv = SearchValues.Create("abc".AsSpan());
+        var sb = new StringWeaver("aaabbbcddd");
+        var idx = sb.IndexOfAnyExcept(sv);
+        Assert.True(idx >= 0);
+        Assert.Equal('d', sb[idx]);
+    }
+
+    [Fact]
+    public void ReplaceAllExact_Regex_ReplacesAllWithExactLength()
+    {
+        var sb = new StringWeaver("Value 123 and 456");
+        var regex = new Regex(@"\d+");
+        sb.ReplaceAllExact(regex, 3, (buffer, match) =>
+        {
+            "NUM".AsSpan().CopyTo(buffer);
+        });
+        Assert.Equal("Value NUM and NUM", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_SingleCharPath()
+    {
+        var sb = new StringWeaver("aaaHello");
+        sb.TrimSequenceStart("a".AsSpan());
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_SingleCharPath()
+    {
+        var sb = new StringWeaver("Helloaaa");
+        sb.TrimSequenceEnd("a".AsSpan());
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void Trim_Count_GreaterThanLength_Clears()
+    {
+        var sb = new StringWeaver("Hi");
+        sb.Trim(10);
+        Assert.Equal(0, sb.Length);
+        Assert.Equal("", sb.ToString());
+    }
+
+    [Fact]
+    public void Expand_Negative_Throws()
+    {
+        var sb = new StringWeaver("Test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Expand(-1));
+    }
+
+    [Fact]
+    public void EnsureCapacity_Negative_Throws()
+    {
+        var sb = new StringWeaver();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.EnsureCapacity(-5));
+    }
+
+    [Fact]
+    public void Drain_ReturnsContentAndClears()
+    {
+        var sb = new StringWeaver("Hello");
+        var drained = sb.Drain();
+        Assert.Equal("Hello", drained);
+        Assert.Equal(0, sb.Length);
+    }
+
+    [Fact]
+    public void Drain_Wipe_Clears()
+    {
+        var sb = new StringWeaver("SecretData");
+        var drained = sb.Drain(true);
+        Assert.Equal("SecretData", drained);
+        Assert.Equal(0, sb.Length);
+    }
+
+    [Fact]
+    public void IBufferWriter_InterfaceUsage_Writes()
+    {
+        var sb = new StringWeaver();
+        IBufferWriter<char> writer = sb;
+        var span = writer.GetSpan(5);
+        "Hello".AsSpan().CopyTo(span);
+        writer.Advance(5);
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void GetStream_WritesBytes()
+    {
+        var sb = new StringWeaver();
+        using var stream = sb.GetStream(Encoding.UTF8);
+        var bytes = Encoding.UTF8.GetBytes("Hello");
+        stream.Write(bytes, 0, bytes.Length);
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void Constructor_StringAndCapacity_CreatesBuffer()
+    {
+        var sb = new StringWeaver("Hi", 10);
+        Assert.Equal(2, sb.Length);
+        Assert.True(sb.Capacity >= 10);
+        Assert.Equal("Hi", sb.ToString());
+    }
+
+    [Fact]
+    public void Constructor_SpanOnly_CreatesBuffer()
+    {
+        var sb = new StringWeaver("Span".AsSpan());
+        Assert.Equal(4, sb.Length);
+        Assert.Equal("Span", sb.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_RemoveAllOccurrences()
+    {
+        var sb = new StringWeaver("abc abc abc");
+        sb.ReplaceAll("abc".AsSpan(), []);
+        Assert.Equal("  ", sb.ToString());
+    }
+
+    [Fact]
+    public void Remove_InvalidRange_Throws()
+    {
+        var sb = new StringWeaver("Test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Remove(-1, 2));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Remove(2, 10));
+    }
+
+    [Fact]
+    public void TrimStart_NoTrimWhenNotPresent()
+    {
+        var sb = new StringWeaver("Hello");
+        sb.TrimStart("xyz".AsSpan());
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimEnd_NoTrimWhenNotPresent()
+    {
+        var sb = new StringWeaver("Hello");
+        sb.TrimEnd("xyz".AsSpan());
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_EmptySpan_NoOp()
+    {
+        var sb = new StringWeaver("Hello");
+        sb.TrimSequenceStart([]);
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_EmptySpan_NoOp()
+    {
+        var sb = new StringWeaver("Hello");
+        sb.TrimSequenceEnd([]);
+        Assert.Equal("Hello", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_ValueLongerThanBuffer_NoOp()
+    {
+        var sb = new StringWeaver("Hi");
+        sb.TrimSequenceStart("Hello".AsSpan());
+        Assert.Equal("Hi", sb.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_ValueLongerThanBuffer_NoOp()
+    {
+        var sb = new StringWeaver("Hi");
+        sb.TrimSequenceEnd("Hello".AsSpan());
+        Assert.Equal("Hi", sb.ToString());
+    }
+
+    [Fact]
+    public void Expand_BeyondCapacity_Throws()
+    {
+        var sb = new StringWeaver("Data");
+        var invalid = sb.FreeCapacity + 1;
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Expand(invalid));
+    }
+
+    [Fact]
+    public void Append_SpanFormattable_GrowWhenNoFreeCapacity()
+    {
+        var baseContent = new string('a', 256);
+        var sb = new StringWeaver(baseContent, 256);
+        sb.Append(123.45, "F2".AsSpan());
+        Assert.True(sb.Length > 256);
+        Assert.Contains("123.45", sb.ToString());
+    }
+
+    [Fact]
+    public void GetWritableMemory_GrowsForSizeHint()
+    {
+        var sb = new StringWeaver(16);
+        sb.Append(new string('x', 16));
+        var mem = sb.GetWritableMemory(100);
+        Assert.True(mem.Length >= 100);
+        Assert.True(sb.Capacity >= 116);
+    }
+
+    [Fact]
+    public void CopyTo_Span_Works()
+    {
+        var sb = new StringWeaver("Hello");
+        Span<char> dest = stackalloc char[5];
+        sb.CopyTo(dest);
+        Assert.Equal("Hello", new string(dest));
+    }
+
+    [Fact]
+    public void CopyTo_Span_DestinationTooSmall_Throws()
+    {
+        var sb = new StringWeaver("Hello");
+        Span<char> dest = stackalloc char[4];
+        var threw = false;
+        try { sb.CopyTo(dest); } catch (ArgumentException) { threw = true; }
+        Assert.True(threw);
+    }
+
+    [Fact]
+    public void CopyTo_Memory_Works()
+    {
+        var sb = new StringWeaver("Hello");
+        var mem = new Memory<char>(new char[5]);
+        sb.CopyTo(mem);
+        Assert.Equal("Hello", new string(mem.Span));
+    }
+
+    [Fact]
+    public void CopyTo_ArrayIndex_Works()
+    {
+        var sb = new StringWeaver("Hello");
+        var arr = new char[10];
+        sb.CopyTo(arr, 2);
+        Assert.Equal('H', arr[2]);
+        Assert.Equal('o', arr[6]);
+    }
+
+    [Fact]
+    public void CopyTo_ArrayIndex_InvalidArgs_Throw()
+    {
+        var sb = new StringWeaver("Hi");
+        var arr = new char[2];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.CopyTo(arr, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.CopyTo(arr, 3));
+        var small = new char[2];
+        Assert.Throws<ArgumentException>(() => sb.CopyTo(small, 1));
+    }
+
+    [Fact]
+    public unsafe void CopyTo_UnmanagedPointer_Writes()
+    {
+        var sb = new StringWeaver("Hello");
+        var arr = new char[5];
+        fixed (char* ptr = arr)
+        {
+            sb.CopyTo(ptr);
+        }
+        Assert.Equal("Hello", new string(arr));
+    }
+
+    [Fact]
+    public void CopyTo_RefChar_Writes()
+    {
+        var sb = new StringWeaver("Hi");
+        var arr = new char[2];
+        ref var start = ref arr[0];
+        sb.CopyTo(ref start);
+        Assert.Equal("Hi", new string(arr));
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_Action_ReplacesFirst()
+    {
+        var sb = new StringWeaver("Value123 and456");
+        var regex = new PcreRegex(@"\d+");
+        sb.Replace(regex, 10, (buffer, match) =>
+        {
+            "NUM".AsSpan().CopyTo(buffer);
+            buffer[3] = '\0';
+        });
+        Assert.Contains("NUM", sb.ToString());
+        Assert.DoesNotContain("123", sb.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_PcreRegex_Action_ReplacesAll()
+    {
+        var sb = new StringWeaver("111222333");
+        var regex = new PcreRegex(@"\d+");
+        var callCount = 0;
+        sb.ReplaceAll(regex, 8, (buffer, match) =>
+        {
+            "X".AsSpan().CopyTo(buffer);
+            buffer[1] = '\0';
+            callCount++;
+        });
+        Assert.Equal("X", sb.ToString());
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_Action_ReplacesFirstExactLength()
+    {
+        var sb = new StringWeaver("Val123 end");
+        var regex = new PcreRegex(@"\d+");
+        sb.ReplaceExact(regex, 5, (buffer, match) =>
+        {
+            "[NUM]".AsSpan().CopyTo(buffer);
+        });
+        Assert.Contains("[NUM]", sb.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_Action_ReplacesAllExactLength()
+    {
+        var sb = new StringWeaver("A1 B22 C333");
+        var regex = new PcreRegex(@"\d+");
+        sb.ReplaceAllExact(regex, 3, (buffer, match) =>
+        {
+            "NUM".AsSpan().CopyTo(buffer);
+        });
+        Assert.Equal("ANUM BNUM CNUM", sb.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_BufferSizeZero_RemovesFirstMatch()
+    {
+        var sb = new StringWeaver("Number123 here");
+        var regex = new PcreRegex(@"\d+");
+        sb.Replace(regex, 0, (buffer, match) => { });
+        Assert.Equal("Number here", sb.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_NegativeBufferSize_Throws()
+    {
+        var sb = new StringWeaver("123");
+        var regex = new PcreRegex(@"\d+");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.Replace(regex, -1, (buffer, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_LengthZero_RemovesFirstMatch()
+    {
+        var sb = new StringWeaver("Num999 end");
+        var regex = new PcreRegex(@"\d+");
+        sb.ReplaceExact(regex, 0, (buffer, match) => { });
+        Assert.Equal("Num end", sb.ToString());
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_NegativeLength_Throws()
+    {
+        var sb = new StringWeaver("123");
+        var regex = new PcreRegex(@"\d+");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb.ReplaceExact(regex, -5, (buffer, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_LengthZero_RemovesAllMatches()
+    {
+        var sb = new StringWeaver("A1 B2 C3");
+        var regex = new PcreRegex(@"\d+");
+        sb.ReplaceAllExact(regex, 0, (buffer, match) => { });
+        Assert.Equal("A B C", sb.ToString());
+    }
+
+    [Fact]
+    public void Stream_ReadSeekSetLength_Throw()
+    {
+        var sb = new StringWeaver();
+        using var stream = sb.GetStream(Encoding.UTF8);
+        Assert.True(stream.CanWrite);
+        Assert.False(stream.CanRead);
+        Assert.False(stream.CanSeek);
+        var bytes = Encoding.UTF8.GetBytes("Hello");
+        stream.Write(bytes, 0, bytes.Length);
+
+        Assert.Throws<NotSupportedException>(() => stream.Read(bytes, 0, bytes.Length));
+        Assert.Throws<NotSupportedException>(() => _ = stream.Position);
+        Assert.Throws<NotSupportedException>(() => stream.Position = 2);
+        Assert.Throws<NotSupportedException>(() => stream.Seek(0, SeekOrigin.Begin));
+        Assert.Throws<NotSupportedException>(() => stream.SetLength(10));
+    }
+
+    [Fact]
+    public void Stream_Write_InvalidArgs_Throw()
+    {
+        var sb = new StringWeaver();
+        using var stream = sb.GetStream(Encoding.UTF8);
+        Assert.Throws<ArgumentNullException>(() => stream.Write(null!, 0, 0));
+        var bytes = new byte[5];
+        Assert.Throws<ArgumentOutOfRangeException>(() => stream.Write(bytes, -1, 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => stream.Write(bytes, 0, 10));
+    }
+
+    [Fact]
+    public void Stream_Dispose_RecreatesOnNextCall()
+    {
+        var sb = new StringWeaver();
+        var s1 = sb.GetStream();
+        s1.Dispose();
+        var s2 = sb.GetStream();
+        Assert.NotSame(s1, s2);
     }
     #endregion
+
+    private readonly struct GrowFormat : ISpanFormattable
+    {
+        private readonly string _value;
+        public GrowFormat(string value) => _value = value;
+        public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider provider)
+        {
+            if (destination.Length < _value.Length)
+            {
+                charsWritten = 0;
+                return false;
+            }
+            _value.AsSpan().CopyTo(destination);
+            charsWritten = _value.Length;
+            return true;
+        }
+        public string ToString(string format, IFormatProvider formatProvider) => _value;
+    }
 }

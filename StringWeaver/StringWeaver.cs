@@ -1477,6 +1477,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         if (count > Length)
         {
             Clear();
+            return;
         }
         Length -= count;
     }
