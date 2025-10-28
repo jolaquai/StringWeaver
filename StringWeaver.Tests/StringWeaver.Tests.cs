@@ -5,9 +5,7 @@ using System.Text.RegularExpressions;
 using Xunit;
 using Xunit.v3;
 
-#if !NET7_0_OR_GREATER
 using PCRE;
-#endif
 
 namespace StringWeaver.Tests;
 
@@ -134,8 +132,8 @@ public class StringWeaverTests
     public void Indexer_OutOfBounds_ThrowsException()
     {
         var sb = new StringWeaver("Test");
-        Assert.Throws<IndexOutOfRangeException>(() => sb[5]);
-        Assert.Throws<IndexOutOfRangeException>(() => sb[^5]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb[5]);
+        Assert.Throws<ArgumentOutOfRangeException>(() => sb[^5]);
     }
     #endregion
 
@@ -601,7 +599,6 @@ public class StringWeaverTests
 #endif
     #endregion
 
-#if NET6_0_OR_GREATER
     #region ISpanFormattable Tests
     [Fact]
     public void Append_SpanFormattable_AppendsFormatted()
@@ -620,7 +617,6 @@ public class StringWeaverTests
         Assert.Equal("Date: 01/15/2024", sb.ToString());
     }
     #endregion
-#endif
 
     #region Edge Cases and Stress Tests
     [Fact]

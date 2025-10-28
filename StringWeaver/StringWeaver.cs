@@ -160,7 +160,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// <summary>
     /// Gets the amount of available space beyond the used portion of the buffer that can be written to without forcing a resize.
     /// </summary>
-    public int FreeCapacity => FreeCapacity;
+    public int FreeCapacity => Capacity - Length;
 
     /// <summary>
     /// Gets a mutable <see cref="Memory{T}"/> over the used portion of the buffer (not including unused space).
