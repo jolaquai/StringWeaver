@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -28,7 +29,7 @@ public delegate void StringWeaverWriter(Span<char> buffer, ReadOnlySpan<char> ma
 /// <remarks>
 /// This type is not thread-safe. Concurrent use will result in corrupted data. Access to instances of this type must be synchronized.
 /// </remarks>
-public sealed partial class StringWeaver : IBufferWriter<char>
+public partial class StringWeaver : IBufferWriter<char>
 {
     #region Enumerator ref structs
     /// <summary>
@@ -93,7 +94,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             _value = value;
             Current = -1;
             nextSearchIndex = start;
-            _version = weaver.version;
+            _version = weaver.Version;
         }
 
         /// <summary>
@@ -111,7 +112,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             var index = _weaver.IndexOf(_value, nextSearchIndex);
             if (index != -1)
             {
-                if (_version != _weaver.version)
+                if (_version != _weaver.Version)
                 {
                     throw new InvalidOperationException("The buffer was modified; enumeration may not continue.");
                 }
@@ -144,7 +145,10 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     #endregion
 
     #region Instance fields
-    private ulong version;
+    /// <summary>
+    /// Gets an internal version key which can be used to detect changes to the buffer.
+    /// </summary>
+    protected uint Version { get; private set; }
     private char[] buffer;
     #endregion
 
@@ -152,15 +156,26 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// <summary>
     /// Gets the current length of the used portion of the buffer.
     /// </summary>
-    public int Length { get; private set; }
+    public int Length { get; protected set; }
     /// <summary>
     /// Gets the total capacity of the buffer.
     /// </summary>
-    public int Capacity => buffer.Length;
+    public int Capacity => FullSpan.Length;
     /// <summary>
     /// Gets the amount of available space beyond the used portion of the buffer that can be written to without forcing a resize.
     /// </summary>
     public int FreeCapacity => Capacity - Length;
+
+    /// <summary>
+    /// Gets a mutable <see cref="Memory{T}"/> over the entire buffer (including unused space).
+    /// The overriding type's backing memory must be definitely assigned.
+    /// </summary>
+    protected internal virtual Memory<char> FullMemory => buffer.AsMemory();
+    /// <summary>
+    /// Gets a mutable <see cref="Span{T}"/> over the entire buffer (including unused space).
+    /// The overriding type's backing memory must be definitely assigned.
+    /// </summary>
+    internal Span<char> FullSpan => FullMemory.Span;
 
     /// <summary>
     /// Gets a mutable <see cref="Memory{T}"/> over the used portion of the buffer (not including unused space).
@@ -168,14 +183,14 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// <remarks>
     /// To obtain a writable <see cref="Memory{T}"/> that can be used to add content beyond the current <see cref="Length"/>, use <see cref="GetWritableMemory(int)"/> instead.
     /// </remarks>
-    public Memory<char> Memory => buffer.AsMemory(0, Length);
+    public Memory<char> Memory => FullMemory[..Length];
     /// <summary>
     /// Gets a mutable <see cref="Span{T}"/> over the used portion of the buffer (not including unused space).
     /// </summary>
     /// <remarks>
     /// To obtain a writable <see cref="Span{T}"/> that can be used to add content beyond the current <see cref="Length"/>, use <see cref="GetWritableSpan(int)"/> instead.
     /// </remarks>
-    public Span<char> Span => buffer.AsSpan(0, Length);
+    public Span<char> Span => FullSpan[..Length];
     /// <summary>
     /// Gets or sets the <see langword="char"/> at the specified index in the used portion of the buffer.
     /// </summary>
@@ -195,7 +210,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
-            return buffer[offset];
+            return FullSpan[offset];
         }
         set
         {
@@ -209,8 +224,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
                 throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
 
-            version++;
-            buffer[offset] = value;
+            Version++;
+            FullSpan[offset] = value;
         }
     }
     /// <summary>
@@ -228,7 +243,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
             }
-            return buffer.AsSpan(offset, length);
+            return Span.Slice(offset, length);
         }
         set
         {
@@ -238,8 +253,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
                 throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
             }
 
-            version++;
-            value.CopyTo(buffer.AsSpan(offset, length));
+            Version++;
+            value.CopyTo(Span.Slice(offset, length));
         }
     }
     #endregion
@@ -252,8 +267,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     public void Append(char value)
     {
         GrowIfNeeded(Length + 1);
-        version++;
-        buffer[Length++] = value;
+        Version++;
+        FullSpan[Length++] = value;
     }
     /// <summary>
     /// Appends a <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to the end of the buffer.
@@ -449,10 +464,10 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     public IEnumerable<int> EnumerateIndicesOf(char value, int start = 0)
     {
         var index = start;
-        var beginVersion = version;
+        var beginVersion = Version;
         while ((index = IndexOf(value, index)) != -1)
         {
-            if (beginVersion != version)
+            if (beginVersion != Version)
             {
                 throw new InvalidOperationException("The buffer was modified during enumeration.");
             }
@@ -460,6 +475,61 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             index++;
         }
     }
+
+    /// <summary>
+    /// Finds the index of the first match of the specified <see cref="PcreRegex"/> in the used portion of the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to search for.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first match of the specified <see cref="PcreRegex"/> in the buffer, or <c>-1</c> if no match is found.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="regex"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOf(PcreRegex regex, int start = 0)
+    {
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var match = regex.Match(Span[start..]);
+        if (!match.Success)
+        {
+            return -1;
+        }
+        return match.Index + start;
+    }
+#if NET7_0_OR_GREATER
+    /// <summary>
+    /// Finds the index of the first match of the specified <see cref="Regex"/> in the used portion of the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to search for.</param>
+    /// <param name="start">At which index in the buffer to start searching.</param>
+    /// <returns>The index of the first match of the specified <see cref="Regex"/> in the buffer, or <c>-1</c> if no match is found.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="regex"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> resolves to an offset that is outside the bounds of the used portion of the buffer.</exception>
+    public int IndexOf(Regex regex, int start = 0)
+    {
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
+        if (start < 0 || start > Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
+        }
+
+        var matchEnumerator = regex.EnumerateMatches(Span[start..]);
+        foreach (var vm in matchEnumerator)
+        {
+            return vm.Index + start;
+        }
+        return -1;
+    }
+#endif
 
     /// <summary>
     /// Finds the first occurrence of any of the specified <paramref name="chars"/> in the used portion of the buffer.
@@ -623,7 +693,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     private void ReplaceCore(int index, int len, ReadOnlySpan<char> to)
     {
-        version++;
+        Version++;
 
         if (to.Length == 0)
         {
@@ -658,10 +728,10 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             var newLength = Length + (to.Length - len);
 
             // Use raw buffer since we need to write beyond current Length
-            remaining.CopyTo(buffer.AsSpan(index + to.Length, remaining.Length));
+            remaining.CopyTo(FullSpan.Slice(index + to.Length, remaining.Length));
 
             // Copy the new content to the index
-            to.CopyTo(buffer.AsSpan(index, to.Length));
+            to.CopyTo(FullSpan.Slice(index, to.Length));
 
             // NOW update length
             Length = newLength;
@@ -672,7 +742,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     private void ReplaceCore(ReadOnlySpan<int> indices, int len, ReadOnlySpan<char> to)
     {
-        version++;
+        Version++;
 
         var lengthDiff = to.Length - len;
         var totalLengthChange = lengthDiff * indices.Length;
@@ -688,8 +758,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
                 var dstStart = srcStart + (lengthDiff * (i + 1));
                 var copyLen = (i == indices.Length - 1) ? Length - srcStart : indices[i + 1] - srcStart;
 
-                buffer.AsSpan(srcStart, copyLen).CopyTo(buffer.AsSpan(dstStart, copyLen));
-                to.CopyTo(buffer.AsSpan(indices[i] + (lengthDiff * i), to.Length));
+                FullSpan.Slice(srcStart, copyLen).CopyTo(FullSpan.Slice(dstStart, copyLen));
+                to.CopyTo(FullSpan.Slice(indices[i] + (lengthDiff * i), to.Length));
             }
         }
         else
@@ -699,14 +769,14 @@ public sealed partial class StringWeaver : IBufferWriter<char>
 
             for (var i = 0; i < indices.Length; i++)
             {
-                to.CopyTo(buffer.AsSpan(writePos, to.Length));
+                to.CopyTo(FullSpan.Slice(writePos, to.Length));
                 writePos += to.Length;
                 var readPos = indices[i] + len;
 
                 var nextIndex = (i + 1 < indices.Length) ? indices[i + 1] : Length;
                 var copyLen = nextIndex - readPos;
 
-                buffer.AsSpan(readPos, copyLen).CopyTo(buffer.AsSpan(writePos, copyLen));
+                FullSpan.Slice(readPos, copyLen).CopyTo(FullSpan.Slice(writePos, copyLen));
                 writePos += copyLen;
             }
         }
@@ -725,7 +795,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         var index = IndexOf(from);
         if (index != -1)
         {
-            buffer[index] = to;
+            FullSpan[index] = to;
         }
     }
     /// <summary>
@@ -742,7 +812,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         var index = IndexOf(from);
         while (index != -1)
         {
-            buffer[index] = to;
+            FullSpan[index] = to;
             index = IndexOf(from, index + 1);
         }
     }
@@ -847,7 +917,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     }
     #endregion
 
-    #region PcreRegex Replace
+    #region PcreRegex
     /// <summary>
     /// Replaces the first occurrence of a <see cref="PcreRegex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.
     /// </summary>
@@ -885,7 +955,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         }
     }
     /// <summary>
-    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement action.
+    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
@@ -925,7 +995,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         ReplaceCore(match.Index, match.Length, to);
     }
     /// <summary>
-    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement action.
+    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
@@ -973,7 +1043,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         }
     }
     /// <summary>
-    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement action. The length of that replacement is fixed to the specified length.
+    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action. The length of that replacement is fixed to the specified length.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="length">The exact length of the replacement content.</param>
@@ -1007,7 +1077,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         ReplaceCore(match.Index, match.Length, buffer);
     }
     /// <summary>
-    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement action. The length of that replacement is fixed to the specified length.
+    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action. The length of that replacement is fixed to the specified length.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="length">The exact length of the replacement content.</param>
@@ -1049,8 +1119,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     }
     #endregion
 
+    #region Regex
 #if NET7_0_OR_GREATER
-    #region Regex Replace
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.
     /// </summary>
@@ -1089,7 +1159,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     }
 
     /// <summary>
-    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement action.
+    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
@@ -1124,7 +1194,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         }
     }
     /// <summary>
-    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement action.
+    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
@@ -1166,7 +1236,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         }
     }
     /// <summary>
-    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement action. The length of that replacement is fixed to the specified length.
+    /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action. The length of that replacement is fixed to the specified length.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="length">The exact length of the replacement content.</param>
@@ -1194,7 +1264,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         }
     }
     /// <summary>
-    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement action. The length of that replacement is fixed to the specified length.
+    /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action. The length of that replacement is fixed to the specified length.
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="length">The exact length of the replacement content.</param>
@@ -1229,8 +1299,8 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             }
         }
     }
-    #endregion
 #endif
+    #endregion
 
     #region Remove
     /// <summary>
@@ -1283,7 +1353,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var start = 0;
@@ -1309,7 +1379,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var start = 0;
@@ -1335,7 +1405,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var end = span.Length - 1;
@@ -1356,7 +1426,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var end = span.Length - 1;
@@ -1397,7 +1467,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var start = 0;
@@ -1431,7 +1501,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        version++;
+        Version++;
 
         var span = Span;
         var end = span.Length - value.Length;
@@ -1457,7 +1527,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(length), "Length must be non-negative and not exceed the current length of the buffer.");
         }
 
-        version++;
+        Version++;
 
         Length = length;
     }
@@ -1472,7 +1542,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative.");
         }
 
-        version++;
+        Version++;
 
         if (count > Length)
         {
@@ -1495,13 +1565,13 @@ public sealed partial class StringWeaver : IBufferWriter<char>
 
         // Safety hatch: attempts to expand beyond the current capacity almost certainly means this method is being misused
         // This should never happen in practice since this method is intended to be used like the combination of ArrayBufferWriter.GetSpan and ArrayBufferWriter.Advance
-        if (Length + written > buffer.Length)
+        if (Length + written > FullSpan.Length)
         {
             throw new ArgumentOutOfRangeException(nameof(written),
                 $"Cannot expand beyond the current capacity of the buffer. This might indicate misuse of {nameof(StringWeaver)}.{nameof(Expand)} since any call to it should be preceded by a method that directly or indirectly grows the buffer.");
         }
 
-        version++;
+        Version++;
         Length += written;
     }
     /// <summary>
@@ -1514,13 +1584,13 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     {
         if (minimumSize <= 0)
         {
-            return buffer.AsMemory(Length);
+            return FullMemory[Length..];
         }
         if (minimumSize > FreeCapacity)
         {
             GrowIfNeeded(Length + minimumSize);
         }
-        return buffer.AsMemory(Length, FreeCapacity);
+        return FullMemory.Slice(Length, FreeCapacity);
     }
     /// <summary>
     /// Gets a <see cref="Span{T}"/> that can be used to write further content to the buffer.
@@ -1591,7 +1661,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
 
         if (initialContent.Length > 0)
         {
-            initialContent.CopyTo(buffer);
+            initialContent.CopyTo(Span);
         }
     }
     /// <summary>
@@ -1605,7 +1675,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentNullException(nameof(other));
         }
         var span = other.Span;
-        buffer = new char[span.Length];
+        buffer = new char[other.Capacity];
         Length = span.Length;
         // More efficient than non-generic Array.Copy plus constrained to the occupied length
         other.Span.CopyTo(Span);
@@ -1628,7 +1698,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         Length = 0;
         if (wipe)
         {
-            buffer.AsSpan().Clear();
+            FullSpan.Clear();
         }
     }
     #endregion
@@ -1690,120 +1760,6 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     #endregion CopyTo
 
     #region Stream
-    private sealed class WeaverStream(StringWeaver weaver, Encoding encoding) : Stream
-    {
-        private StringWeaver _weaver = weaver;
-        private readonly Decoder _decoder = encoding.GetDecoder();
-
-        private void EnsureUsable()
-        {
-            if (_weaver is null)
-            {
-                throw new ObjectDisposedException(nameof(StringWeaver), "The Stream has been disposed.");
-            }
-        }
-
-        public override bool CanRead
-        {
-            get
-            {
-                EnsureUsable();
-                return false;
-            }
-        }
-        public override bool CanSeek
-        {
-            get
-            {
-                EnsureUsable();
-                return false;
-            }
-        }
-        public override bool CanWrite
-        {
-            get
-            {
-                EnsureUsable();
-                return true;
-            }
-        }
-        public override long Length
-        {
-            get
-            {
-                EnsureUsable();
-                throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
-            }
-        }
-
-        public override long Position
-        {
-            get
-            {
-                EnsureUsable();
-                throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
-            }
-            set
-            {
-                EnsureUsable();
-                throw new NotSupportedException($"Cannot seek a {nameof(StringWeaver)} stream.");
-            }
-        }
-
-        public override void Flush() => EnsureUsable();
-        public override int Read(byte[] buffer, int offset, int count)
-        {
-            EnsureUsable();
-            throw new NotSupportedException($"Cannot read from a {nameof(StringWeaver)} stream.");
-        }
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            EnsureUsable();
-            throw new NotSupportedException($"Cannot seek a {nameof(StringWeaver)} stream.");
-        }
-        public override void SetLength(long value)
-        {
-            EnsureUsable();
-            throw new NotSupportedException($"Cannot set length of a {nameof(StringWeaver)} stream.");
-        }
-        public override void Write(byte[] buffer, int offset, int count)
-        {
-            EnsureUsable();
-            if (buffer is null)
-            {
-                throw new ArgumentNullException(nameof(buffer));
-            }
-            if (offset < 0 || count < 0 || offset + count > buffer.Length)
-            {
-                throw new ArgumentOutOfRangeException(nameof(offset), $"{nameof(offset)} and {nameof(count)} must specify a valid range in the buffer.");
-            }
-
-            var source = buffer.AsSpan(offset, count);
-            var charCount = _decoder.GetCharCount(buffer, offset, count);
-            var destination = _weaver.GetWritableSpan(charCount);
-            System.Diagnostics.Debug.Assert(destination.Length != 0, "destination buffer returned must never be 0-length");
-            unsafe
-            {
-                var srcPtr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(source));
-                var destPtr = (char*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination));
-                var written = _decoder.GetChars(srcPtr, source.Length, destPtr, charCount, true);
-                _weaver.Expand(written);
-            }
-        }
-
-        /// <summary>
-        /// Releases the reference to the underlying <see cref="StringWeaver"/>.
-        /// </summary>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                _weaver.weaverStream = null;
-                _weaver = null;
-            }
-            base.Dispose(disposing);
-        }
-    }
     private volatile Stream weaverStream;
     /// <summary>
     /// Obtains a <see cref="Stream"/> implementation that allows treating a <see cref="StringWeaver"/> as a <see langword="byte"/> sink.
@@ -1811,17 +1767,17 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="encoding">The <see cref="Encoding"/> to use for converting <see langword="byte"/>s to <see langword="char"/>s. If <c>null</c>, <see cref="Encoding.Default"/> is used.</param>
     /// <returns>The <see cref="Stream"/> implementation.</returns>
-    public Stream GetStream(Encoding encoding = null) => weaverStream ??= new WeaverStream(this, encoding ?? Encoding.Default);
+    public Stream GetStream(Encoding encoding = null) => weaverStream ??= new WeaverStream(this, encoding ?? Encoding.Default, () => weaverStream = null);
     #endregion
 
-    #region Implementation details
+    #region Grow
     /// <summary>
     /// Grows <see cref="buffer"/> if <paramref name="requiredCapacity"/> exceeds the current capacity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void GrowIfNeeded(int requiredCapacity)
     {
-        if (requiredCapacity > buffer.Length)
+        if (requiredCapacity > FullSpan.Length)
         {
             Grow(requiredCapacity);
         }
@@ -1830,14 +1786,14 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     /// Grows <see cref="buffer"/> unconditionally, ensuring at least twice the previous capacity (if possible).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Grow() => Grow(buffer.Length + 1);
+    private void Grow() => Grow(FullSpan.Length + 1);
     /// <summary>
     /// Grows <see cref="buffer"/> unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> characters.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void Grow(int requiredCapacity)
+    protected virtual void Grow(int requiredCapacity)
     {
-        version++;
+        Version++;
 
         Array.Resize(ref buffer, Helpers.NextPowerOf2(requiredCapacity));
     }
@@ -1849,12 +1805,13 @@ public sealed partial class StringWeaver : IBufferWriter<char>
     Span<char> IBufferWriter<char>.GetSpan(int sizeHint) => GetWritableSpan(sizeHint);
     #endregion IBufferWriter<char> impl
 
+    #region ToString
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer.
     /// If a <see cref="ReadOnlySpan{T}"/> would suffice, use <see cref="Span"/> instead.
     /// </summary>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
-    public override string ToString() => Span.ToString();
+    public sealed override string ToString() => Span.ToString();
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer, then clears the buffer for re-use.
     /// </summary>
@@ -1871,6 +1828,7 @@ public sealed partial class StringWeaver : IBufferWriter<char>
         Clear(wipe);
         return str;
     }
+    #endregion
 }
 
 internal static class Extensions
