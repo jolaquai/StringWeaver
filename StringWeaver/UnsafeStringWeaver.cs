@@ -1,9 +1,4 @@
-﻿#pragma warning disable CA1510 // Prevents further fragmentation of code paths between TargetFrameworks for no reason
-
-using System.Buffers;
-using System.Runtime.CompilerServices;
-
-namespace StringWeaver;
+﻿namespace StringWeaver;
 
 /// <summary>
 /// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC _pressure for very large buffers.

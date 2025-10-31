@@ -1,7 +1,5 @@
 ﻿using PCRE;
 
-#pragma warning disable CA1510 // Prevents further fragmentation of code paths between TargetFrameworks for no reason
-
 namespace StringWeaver;
 
 /// <summary>

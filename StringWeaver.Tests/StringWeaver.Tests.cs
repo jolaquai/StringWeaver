@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace StringWeaver.Tests;
 
 public class StringWeaverTests
@@ -40,10 +42,7 @@ public class StringWeaverTests
     }
 
     [Fact]
-    public void Constructor_WithStringAndCapacity_ThrowsWhenCapacityTooSmall()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => new StringWeaver("hello", 3));
-    }
+    public void Constructor_WithStringAndCapacity_ThrowsWhenCapacityTooSmall() => Assert.Throws<ArgumentOutOfRangeException>(static () => new StringWeaver("hello", 3));
 
     [Fact]
     public void Constructor_WithReadOnlySpan_CopiesContent()
@@ -77,10 +76,7 @@ public class StringWeaverTests
     }
 
     [Fact]
-    public void Constructor_CopyNull_ThrowsArgumentNullException()
-    {
-        Assert.Throws<ArgumentNullException>(() => new StringWeaver((StringWeaver)null));
-    }
+    public void Constructor_CopyNull_ThrowsArgumentNullException() => Assert.Throws<ArgumentNullException>(static () => new StringWeaver((StringWeaver)null));
 
     [Fact]
     public void Append_Char_AppendsCharacter()
@@ -106,7 +102,7 @@ public class StringWeaverTests
     public void Append_EmptySpan_DoesNothing()
     {
         var weaver = new StringWeaver("test");
-        weaver.Append(ReadOnlySpan<char>.Empty);
+        weaver.Append([]);
 
         Assert.Equal("test", weaver.ToString());
     }
@@ -223,7 +219,6 @@ public class StringWeaverTests
         Assert.Equal("test", weaver.ToString());
     }
 
-#if NET6_0_OR_GREATER
     [Fact]
     public void Append_ISpanFormattable_AppendsFormattedValue()
     {
@@ -241,7 +236,6 @@ public class StringWeaverTests
 
         Assert.Equal("42.50", weaver.ToString());
     }
-#endif
 
     [Fact]
     public void IndexOf_Char_FindsFirstOccurrence()
@@ -416,7 +410,6 @@ public class StringWeaverTests
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.IndexOf(regex, 10));
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void IndexOf_Regex_FindsFirstMatch()
     {
@@ -442,7 +435,6 @@ public class StringWeaverTests
 
         Assert.Throws<ArgumentNullException>(() => weaver.IndexOf((Regex)null));
     }
-#endif
 
     [Fact]
     public void IndexOfAny_FindsFirstOccurrence()
@@ -469,7 +461,6 @@ public class StringWeaverTests
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.IndexOfAny("lo".AsSpan(), 10));
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void IndexOfAnyExcept_FindsFirstCharNotInSet()
     {
@@ -485,9 +476,7 @@ public class StringWeaverTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.IndexOfAnyExcept("a".AsSpan(), -1));
     }
-#endif
 
-#if NET8_0_OR_GREATER
     [Fact]
     public void IndexOfAnyInRange_FindsFirstCharInRange()
     {
@@ -521,7 +510,6 @@ public class StringWeaverTests
 
         Assert.Equal(3, weaver.IndexOfAnyExcept(searchValues));
     }
-#endif
 
     [Fact]
     public void Replace_CharToChar_ReplacesFirstOccurrence()
@@ -564,7 +552,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello");
 
-        Assert.Throws<ArgumentException>(() => weaver.Replace(ReadOnlySpan<char>.Empty, "x".AsSpan()));
+        Assert.Throws<ArgumentException>(() => weaver.Replace([], "x".AsSpan()));
     }
 
     [Fact]
@@ -617,7 +605,7 @@ public class StringWeaverTests
     public void ReplaceAll_SpanToEmpty_RemovesAllOccurrences()
     {
         var weaver = new StringWeaver("hello world");
-        weaver.ReplaceAll("l".AsSpan(), ReadOnlySpan<char>.Empty);
+        weaver.ReplaceAll("l".AsSpan(), []);
 
         Assert.Equal("heo word", weaver.ToString());
     }
@@ -684,10 +672,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.Replace(regex, 10, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.Replace(regex, 10, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworld", weaver.ToString());
     }
@@ -697,7 +682,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.Replace(regex, 0, (buffer, match) => { });
+        weaver.Replace(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -727,10 +712,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceAll(regex, 10, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceAll(regex, 10, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworldXXX", weaver.ToString());
     }
@@ -740,10 +722,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceExact(regex, 3, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceExact(regex, 3, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworld", weaver.ToString());
     }
@@ -753,7 +732,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceExact(regex, 0, (buffer, match) => { });
+        weaver.ReplaceExact(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -763,15 +742,11 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceAllExact(regex, 3, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceAllExact(regex, 3, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworldXXX", weaver.ToString());
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void Replace_Regex_ReplacesFirstMatch()
     {
@@ -807,10 +782,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.Replace(regex, 10, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.Replace(regex, 10, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworld", weaver.ToString());
     }
@@ -820,10 +792,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAll(regex, 10, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceAll(regex, 10, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworldXXX", weaver.ToString());
     }
@@ -833,10 +802,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceExact(regex, 3, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceExact(regex, 3, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworld", weaver.ToString());
     }
@@ -846,10 +812,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAllExact(regex, 3, (buffer, match) =>
-        {
-            "XXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceAllExact(regex, 3, static (buffer, match) => "XXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXworldXXX", weaver.ToString());
     }
@@ -862,7 +825,6 @@ public class StringWeaverTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceExact(regex, -1, (b, m) => { }));
     }
-#endif
 
     [Fact]
     public void Remove_Range_RemovesSpecifiedRange()
@@ -985,7 +947,7 @@ public class StringWeaverTests
     public void TrimSequenceStart_EmptySequence_DoesNothing()
     {
         var weaver = new StringWeaver("hello");
-        weaver.TrimSequenceStart(ReadOnlySpan<char>.Empty);
+        weaver.TrimSequenceStart([]);
 
         Assert.Equal("hello", weaver.ToString());
     }
@@ -1021,7 +983,7 @@ public class StringWeaverTests
     public void TrimSequenceEnd_EmptySequence_DoesNothing()
     {
         var weaver = new StringWeaver("hello");
-        weaver.TrimSequenceEnd(ReadOnlySpan<char>.Empty);
+        weaver.TrimSequenceEnd([]);
 
         Assert.Equal("hello", weaver.ToString());
     }
@@ -1176,7 +1138,11 @@ public class StringWeaverTests
         weaver.Clear(true);
 
         Assert.Equal(0, weaver.Length);
-        Assert.True(weaver.Span.Length == 0);
+        Assert.Equal(0, weaver.Span.Length);
+
+        var asBytes = MemoryMarshal.AsBytes(weaver.FullSpan);
+        var index = asBytes.IndexOfAnyExcept((byte)0);
+        Assert.Equal(-1, index);
     }
 
     [Fact]
@@ -1518,7 +1484,7 @@ public class StringWeaverTests
     public void Replace_WithEmptyReplacement_RemovesContent()
     {
         var weaver = new StringWeaver("hello world");
-        weaver.Replace(5, 6, ReadOnlySpan<char>.Empty);
+        weaver.Replace(5, 6, []);
 
         Assert.Equal("hello", weaver.ToString());
     }
@@ -1536,7 +1502,7 @@ public class StringWeaverTests
     public void ReplaceAll_WithEmptyReplacement_RemovesAllOccurrences()
     {
         var weaver = new StringWeaver("a b a b a");
-        weaver.ReplaceAll("a ".AsSpan(), ReadOnlySpan<char>.Empty);
+        weaver.ReplaceAll("a ".AsSpan(), []);
 
         Assert.Equal("b b a", weaver.ToString());
     }
@@ -1634,7 +1600,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.Replace(regex, 10, (buffer, match) =>
+        weaver.Replace(regex, 10, static (buffer, match) =>
         {
             "XX".AsSpan().CopyTo(buffer);
             buffer[2] = '\0';
@@ -1649,10 +1615,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.Replace(regex, 5, (buffer, match) =>
-        {
-            "XXXXX".AsSpan().CopyTo(buffer);
-        });
+        weaver.Replace(regex, 5, static (buffer, match) => "XXXXX".AsSpan().CopyTo(buffer));
 
         Assert.Equal("helloXXXXXworld", weaver.ToString());
     }
@@ -1726,12 +1689,11 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceAllExact(regex, 0, (buffer, match) => { });
+        weaver.ReplaceAllExact(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void Replace_RegexNull_ThrowsArgumentNullException()
     {
@@ -1770,7 +1732,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.Replace(regex, 0, (buffer, match) => { });
+        weaver.Replace(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1800,7 +1762,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAll(regex, 0, (buffer, match) => { });
+        weaver.ReplaceAll(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1818,7 +1780,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceExact(regex, 0, (buffer, match) => { });
+        weaver.ReplaceExact(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1858,7 +1820,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAllExact(regex, 0, (buffer, match) => { });
+        weaver.ReplaceAllExact(regex, 0, static (buffer, match) => { });
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1868,7 +1830,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.Replace(regex, 10, (buffer, match) =>
+        weaver.Replace(regex, 10, static (buffer, match) =>
         {
             "XX".AsSpan().CopyTo(buffer);
             buffer[2] = '\0';
@@ -1882,7 +1844,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("a1b22c");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAll(regex, 10, (buffer, match) =>
+        weaver.ReplaceAll(regex, 10, static (buffer, match) =>
         {
             "X".AsSpan().CopyTo(buffer);
             buffer[1] = '\0';
@@ -1896,14 +1858,10 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("a1b22c");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAllExact(regex, 1, (buffer, match) =>
-        {
-            "X".AsSpan().CopyTo(buffer);
-        });
+        weaver.ReplaceAllExact(regex, 1, static (buffer, match) => "X".AsSpan().CopyTo(buffer));
 
         Assert.Equal("aXbXc", weaver.ToString());
     }
-#endif
 
     [Fact]
     public void IndexOf_CharAtEndOfBuffer_Finds()
@@ -2033,17 +1991,14 @@ public class StringWeaverTests
     }
 
     [Fact]
-    public void MaxCapacity_IsIntMaxValue()
-    {
-        Assert.Equal(int.MaxValue, StringWeaver.MaxCapacity);
-    }
+    public void MaxCapacity_IsIntMaxValue() => Assert.Equal(int.MaxValue, StringWeaver.MaxCapacity);
 
     [Fact]
     public void ReplaceAll_EmptyFromSpan_ThrowsArgumentException()
     {
         var weaver = new StringWeaver("hello");
 
-        Assert.Throws<ArgumentException>(() => weaver.ReplaceAll(ReadOnlySpan<char>.Empty, "x".AsSpan()));
+        Assert.Throws<ArgumentException>(() => weaver.ReplaceAll([], "x".AsSpan()));
     }
 
     [Fact]
@@ -2074,7 +2029,6 @@ public class StringWeaverTests
         Assert.Equal(13, weaver.IndexOf(regex, 8));
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void IndexOf_RegexWithStart_FindsFromStart()
     {
@@ -2093,7 +2047,6 @@ public class StringWeaverTests
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.IndexOf(regex, -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => weaver.IndexOf(regex, 10));
     }
-#endif
 
     [Fact]
     public void GetWritableMemory_ZeroMinimumSize_ReturnsNonZeroMemory()

@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace StringWeaver;
 
-namespace StringWeaver;
-
-public static class StringWeaverConfiguration
+internal static class StringWeaverConfiguration
 {
 }

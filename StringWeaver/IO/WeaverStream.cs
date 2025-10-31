@@ -1,7 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Text;
-
-namespace StringWeaver.IO;
+﻿namespace StringWeaver.IO;
 
 internal sealed class WeaverStream(StringWeaver weaver, Encoding encoding, Action onDispose = null) : Stream
 {

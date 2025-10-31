@@ -1,6 +1,4 @@
-﻿#pragma warning disable CA1510 // Prevents further fragmentation of code paths between TargetFrameworks for no reason
-
-namespace StringWeaver.Helpers;
+﻿namespace StringWeaver.Helpers;
 
 // This entire thing is unsafe because netstandard2.0 doesn't support ref fields, meaning I can't store a reference to the first T as a managed pointer
 internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmanaged
@@ -15,6 +13,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     private readonly bool _wipeOnDispose;
     private readonly bool? _pressure;
     private bool lastGrowReportedPressure;
+    internal T* pointer = _nullPtr;
 
     /// <summary>
     /// Gets an internal version key that can be used to detect changes to the underlying memory block.
@@ -27,19 +26,58 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     /// <summary>
     /// Gets the numeric <see cref="nint"/> value of <see cref="Pointer"/>;
     /// </summary>
-    public nint PointerValue => (nint)Pointer;
+    public nint PointerValue
+    {
+        get
+        {
+            EnsureUsable();
+            return (nint)Pointer;
+        }
+    }
+
     /// <summary>
     /// Gets a pointer to the first element of the memory block.
     /// </summary>
-    public T* Pointer { get; private set; } = _nullPtr;
+    public T* Pointer
+    {
+        get
+        {
+            EnsureUsable();
+            return pointer;
+        }
+        private set
+        {
+            EnsureUsable();
+            pointer = value;
+        }
+    }
     /// <summary>
     /// Gets the number of elements that fit in the memory block.
     /// </summary>
-    public int Capacity { get; private set; }
+    public int Capacity
+    {
+        get
+        {
+            EnsureUsable();
+            return field;
+        }
+        private set
+        {
+            EnsureUsable();
+            field = value;
+        }
+    }
     /// <summary>
     /// Gets the raw size of the memory block in <see langword="byte"/>s.
     /// </summary>
-    public long CapacityBytes => (long)Capacity * _sizeOfT;
+    public long CapacityBytes
+    {
+        get
+        {
+            EnsureUsable();
+            return (long)Capacity * _sizeOfT;
+        }
+    }
     #endregion
 
     /// <summary>
@@ -125,10 +163,19 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     #endregion
 
     #region MemoryManager<T>
-    private bool disposed;
-    private volatile int pinCount;
+    internal bool disposed;
+    internal volatile int pinCount;
+    internal bool freePending;
 
-    private void EnsureUsable() => _ = disposed ? throw new ObjectDisposedException(nameof(NativeBuffer<>)) : 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureUsable()
+    {
+        if (disposed)
+        {
+            throw new ObjectDisposedException(nameof(NativeBuffer<>));
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Span<T> GetSpan()
     {
@@ -151,6 +198,13 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
             Debug.Fail("Unbalanced Unpin() call detected.");
             Interlocked.Exchange(ref pinCount, 0);
         }
+
+        if (freePending && pinCount == 0)
+        {
+            Marshal.FreeHGlobal(PointerValue);
+            freePending = false;
+            disposed = true;
+        }
     }
     protected override void Dispose(bool disposing)
     {
@@ -158,6 +212,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
         {
             return;
         }
+        freePending = true;
         disposed = true;
 
         if (_wipeOnDispose)
@@ -165,10 +220,20 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
             Wipe();
         }
 
-        var ptr = Pointer;
+        var ptr = PointerValue;
         Pointer = _nullPtr;
 
-        Marshal.FreeHGlobal(PointerValue);
+        if (pinCount == 0)
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+        // If we didn't dispose, the last Unpin call is now responsible for that
+    }
+    protected override bool TryGetArray(out ArraySegment<T> segment)
+    {
+        // We have no array to expose
+        segment = default;
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

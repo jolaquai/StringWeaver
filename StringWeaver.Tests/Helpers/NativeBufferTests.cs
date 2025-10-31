@@ -207,11 +207,11 @@ public unsafe class NativeBufferTests
     public void Dispose_FreesMemory()
     {
         var buffer = new NativeBuffer<int>(10);
-        var ptr = buffer.PointerValue;
 
         ((IDisposable)buffer).Dispose();
 
-        Assert.Equal(nint.Zero, buffer.PointerValue);
+        // direct access to internal pointer for test purposes, should never be done, use Pointer or PointerValue instead
+        Assert.Equal(nint.Zero, (nint)buffer.pointer);
     }
 
     [Fact]
@@ -235,6 +235,30 @@ public unsafe class NativeBufferTests
 
         ((IDisposable)buffer).Dispose();
         ((IDisposable)buffer).Dispose();
+    }
+
+    [Fact]
+    public void Dispose_OutstandingPins_WontLeak()
+    {
+        var buffer = new NativeBuffer<int>(10);
+        var handle = buffer.Pin();
+
+        Assert.False(buffer.disposed);
+        Assert.False(buffer.freePending);
+        Assert.Equal(1, buffer.pinCount);
+
+        ((IDisposable)buffer).Dispose();
+
+        Assert.True(buffer.disposed);
+        Assert.True(buffer.freePending);
+        Assert.Equal(1, buffer.pinCount);
+
+        handle.Dispose();
+
+        Assert.Equal(nint.Zero, buffer.PointerValue);
+        Assert.True(buffer.disposed);
+        Assert.False(buffer.freePending);
+        Assert.Equal(0, buffer.pinCount);
     }
 
     [Fact]

@@ -45,6 +45,8 @@ Namespace: `global::StringWeaver.Specialized`
 
 Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
 
+(!) The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
+
 Note that the above setup is the reason `PooledStringWeaver` does not inherit from and exposes an API surface vastly different than that of `StringWeaver`: multiple non-contiguous pooled buffers (or ones larger in size than `int.MaxValue`) cannot be exposed as a single `Memory<char>`.
 
 # Global configuration
@@ -53,7 +55,8 @@ The `static class StringWeaverConfiguration` exposes global configuration option
 
 # Contribution
 
-Opening issues and submitting PRs are welcome. All changes must be appropriately covered by tests.
+Opening issues and submitting PRs are welcome. All changes must be appropriately covered by tests. Tests run exclusively under `net9.0`.
+
 Support for `netstandard2.0` must always be maintained. If possible, new functionality should be added to all target frameworks. New dependencies may be introduced after I vet the decision to do so.
 
 Or get in touch on Discord `@eyeoftheenemy`

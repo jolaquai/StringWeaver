@@ -8,6 +8,8 @@
     <IsTestProject>True</IsTestProject>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <NoWarn>$(NoWarn);SYSLIB1045</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
