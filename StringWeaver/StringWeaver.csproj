@@ -47,11 +47,18 @@
       <PackageReference Include="PCRE.NET" Version="1.3.0" />
       <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
 
-      <Using Include="System.Runtime.InteropServices" />
+      <InternalsVisibleTo Include="StringWeaver.Tests" />
+
+      <Using Include="System.Buffers" />
       <Using Include="System.Diagnostics" />
+      <Using Include="System.Runtime.CompilerServices" />
+      <Using Include="System.Runtime.InteropServices" />
+      <Using Include="System.Text" />
+      <Using Include="System.Text.RegularExpressions" />
 
       <Using Include="StringWeaver" />
       <Using Include="StringWeaver.IO" />
+      <Using Include="StringWeaver.Helpers" />
   </ItemGroup>
 
   <ItemGroup>
@@ -59,11 +66,7 @@
   </ItemGroup>
   <!-- Copy readme.md from this project's directory into the solution directory -->
   <Target Name="GlobalizeReadmeMd" BeforeTargets="Pack;Build">
-      <Copy ContinueOnError="WarnAndContinue"
-            Retries="3" OverwriteReadOnlyFiles="True"
-            SourceFiles="$(MSBuildProjectDirectory)\readme.md"
-            DestinationFolder="$(SolutionDir)"
-            />
+      <Copy ContinueOnError="WarnAndContinue" Retries="3" OverwriteReadOnlyFiles="True" SourceFiles="$(MSBuildProjectDirectory)\readme.md" DestinationFolder="$(SolutionDir)" />
   </Target>
 
 </Project>

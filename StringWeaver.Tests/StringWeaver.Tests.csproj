@@ -20,6 +20,16 @@
       </PackageReference>
 
       <ProjectReference Include="$(SolutionDir)StringWeaver\StringWeaver.csproj" />
+
+      <Using Include="System"/>
+      <Using Include="System.Buffers"/>
+      <Using Include="System.Linq"/>
+      <Using Include="System.Text"/>
+      <Using Include="System.Text.RegularExpressions"/>
+
+      <Using Include="PCRE"/>
+
+      <Using Include="Xunit"/>
   </ItemGroup>
 
   <!--

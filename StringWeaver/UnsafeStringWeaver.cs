@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 namespace StringWeaver;
 
 /// <summary>
-/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
+/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC _pressure for very large buffers.
 /// </summary>
 internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
 {
@@ -123,110 +123,6 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     {
         ((IDisposable)_buffer).Dispose();
         GC.SuppressFinalize(this);
-    }
-    #endregion
-}
-
-// This entire thing is unsafe because netstandard2.0 doesn't support ref fields, meaning I can't store a reference to the first T as a managed pointer
-internal unsafe sealed class NativeBuffer<T> : MemoryManager<T> where T : unmanaged
-{
-    #region const
-    private static readonly unsafe int _sizeOfT = sizeof(T);
-    private static readonly T* _nullPtr = (T*)0;
-    #endregion
-
-    #region Instance fields
-    private readonly bool _wipeOnDispose;
-    public uint Version { get; private set; }
-    #endregion
-
-    #region Properties/Indexers
-    /// <summary>
-    /// Gets the numeric <see cref="nint"/> value of <see cref="Pointer"/>;
-    /// </summary>
-    public nint PointerValue => (nint)Pointer;
-    /// <summary>
-    /// Gets a pointer to the first element of the memory block.
-    /// </summary>
-    public T* Pointer { get; private set; } = _nullPtr;
-    /// <summary>
-    /// Gets the number of elements that fit in the memory block.
-    /// </summary>
-    public int Capacity { get; private set; }
-    /// <summary>
-    /// Gets the raw size of the memory block in <see langword="byte"/>s.
-    /// </summary>
-    public long CapacityBytes => (long)Capacity * _sizeOfT;
-    #endregion
-
-    /// <summary>
-    /// Initializes a new <see cref="NativeBuffer{T}"/> with the specified initial capacity and a value that indicates whether the memory should be wiped on disposal of this wrapper.
-    /// </summary>
-    /// <param name="count">The initial capacity in number of <typeparamref name="T"/> elements.</param>
-    /// <param name="wipeOnDispose">Whether to wipe the memory block on disposal of this wrapper.</param>
-    public NativeBuffer(int count, bool wipeOnDispose = false)
-    {
-        // This is safe to do since ReAllocHGlobal just delegates to AllocHGlobal when passed a nullptr for the "previous" pointer
-        Capacity = Grow(count);
-        _wipeOnDispose = wipeOnDispose;
-    }
-
-    #region Grow
-    /// <summary>
-    /// Grows the underlying memory block if <paramref name="requiredCapacity"/> exceeds the current capacity.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GrowIfNeeded(int requiredCapacity)
-    {
-        if (requiredCapacity > Capacity)
-        {
-            return Grow(requiredCapacity);
-        }
-        return Capacity;
-    }
-    /// <summary>
-    /// Reallocates the underlying memory block unconditionally, ensuring at least twice the previous capacity (if possible).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int Grow() => Grow(Capacity + 1);
-    /// <summary>
-    /// Reallocates the underlying memory block unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> characters.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public int Grow(int requiredCapacity)
-    {
-        Version++;
-
-        var newSize = Helpers.NextPowerOf2(requiredCapacity);
-        Pointer = (T*)Marshal.ReAllocHGlobal(PointerValue, (nint)newSize);
-        return newSize;
-    }
-    #endregion
-
-    #region Clear
-    public void Wipe() => Unsafe.InitBlockUnaligned(Pointer, 0, (uint)CapacityBytes);
-    #endregion
-
-    #region MemoryManager<T>
-    public override Span<T> GetSpan() => new Span<T>(Pointer, Capacity);
-    public override MemoryHandle Pin(int elementIndex = 0)
-    {
-        if (elementIndex < 0 || elementIndex >= CapacityBytes)
-        {
-            throw new ArgumentOutOfRangeException(nameof(elementIndex), "Element index must be within the bounds of the memory block.");
-        }
-
-        // Native memory blocks don't need to be pinned...
-        return new MemoryHandle(Pointer + elementIndex);
-    }
-    public override void Unpin() { }
-    protected override void Dispose(bool disposing)
-    {
-        if (_wipeOnDispose)
-        {
-            Wipe();
-        }
-        Marshal.FreeHGlobal(PointerValue);
     }
     #endregion
 }

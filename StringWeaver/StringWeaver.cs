@@ -1,10 +1,4 @@
-﻿using System;
-using System.Buffers;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.RegularExpressions;
-
-using PCRE;
+﻿using PCRE;
 
 #pragma warning disable CA1510 // Prevents further fragmentation of code paths between TargetFrameworks for no reason
 
@@ -148,7 +142,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <summary>
     /// Gets an internal version key which can be used to detect changes to the buffer.
     /// </summary>
-    protected uint Version { get; private set; }
+    protected internal uint Version { get; private set; }
     private char[] buffer;
     #endregion
 
@@ -226,35 +220,6 @@ public partial class StringWeaver : IBufferWriter<char>
 
             Version++;
             FullSpan[offset] = value;
-        }
-    }
-    /// <summary>
-    /// Gets or sets a <see cref="Range"/> of <see langword="char"/> in the used portion of the buffer.
-    /// </summary>
-    /// <param name="range">The <see cref="Range"/> of <see langword="char"/> to get or set.</param>
-    /// <returns>A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> that represents the specified range.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when the <see cref="Range"/> does not resolve to a location entirely within the bounds of the used portion of the buffer.</exception>
-    public Span<char> this[Range range]
-    {
-        get
-        {
-            var (offset, length) = range.GetOffsetAndLength(Length);
-            if (offset < 0 || offset >= Length || length < 0 || offset + length > Length)
-            {
-                throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
-            }
-            return Span.Slice(offset, length);
-        }
-        set
-        {
-            var (offset, length) = range.GetOffsetAndLength(Length);
-            if (offset < 0 || offset >= Length || length < 0 || offset + length > Length)
-            {
-                throw new ArgumentOutOfRangeException($"Range ({range}) must be within the bounds of the used portion of the buffer.");
-            }
-
-            Version++;
-            value.CopyTo(Span.Slice(offset, length));
         }
     }
     #endregion
@@ -706,8 +671,12 @@ public partial class StringWeaver : IBufferWriter<char>
         else if (to.Length < len)
         {
             // Also easy, copy everything after index + len to index + to.Length
-            var remaining = Span[(index + len)..];
-            remaining.CopyTo(Span[(index + to.Length)..]);
+            if (index + len < Length)
+            {
+                // Even better if there's nothing remaining since there's nothing we needs to copy
+                var remaining = Span[(index + len)..];
+                remaining.CopyTo(Span[(index + to.Length)..]);
+            }
             // Copy the new content to the index
             to.CopyTo(Span[index..]);
             // Reduce length
@@ -972,15 +941,10 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         // Specifying length == 0 is... weird, but we allow it for consistency
-        if (bufferSize == 0)
+        if (bufferSize == 0 || writeReplacementAction is null)
         {
             Replace(regex, default);
             return;
-        }
-
-        if (writeReplacementAction is null)
-        {
-            throw new ArgumentNullException(nameof(writeReplacementAction), "Write replacement action cannot be null.");
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
@@ -1011,15 +975,10 @@ public partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be non-negative.");
         }
 
-        if (bufferSize == 0)
+        if (bufferSize == 0 || writeReplacementAction is null)
         {
             Replace(regex, default);
             return;
-        }
-
-        if (writeReplacementAction is null)
-        {
-            throw new ArgumentNullException(nameof(writeReplacementAction), "Write replacement action cannot be null.");
         }
 
         using var matchBuffer = regex.CreateMatchBuffer();
@@ -1059,7 +1018,7 @@ public partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(length), "Replacement length must be non-negative.");
         }
 
-        if (length == 0)
+        if (length == 0 || writeReplacementAction is null)
         {
             Replace(regex, default);
             return;
@@ -1093,15 +1052,10 @@ public partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(length), "Replacement length must be non-negative.");
         }
 
-        if (length == 0)
+        if (length == 0 || writeReplacementAction is null)
         {
             ReplaceAll(regex, default);
             return;
-        }
-
-        if (writeReplacementAction is null)
-        {
-            throw new ArgumentNullException(nameof(writeReplacementAction), "Write replacement action cannot be null.");
         }
 
         using var matchBuffer = regex.CreateMatchBuffer();
@@ -1114,7 +1068,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             writeReplacementAction(buffer, Span.Slice(match));
             ReplaceCore(match.Index, match.Length, buffer);
-            start = match.Index + buffer.Length; // Move past the current match
+            start = match.Index + length; // Move past the current match
         }
     }
     #endregion
@@ -1128,7 +1082,10 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
     public void Replace(Regex regex, ReadOnlySpan<char> to)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
 
         foreach (var vm in regex.EnumerateMatches(Span))
         {
@@ -1143,17 +1100,29 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
     public void ReplaceAll(Regex regex, ReadOnlySpan<char> to)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
 
         var currentEnumerator = regex.EnumerateMatches(Span);
-        foreach (var vm in currentEnumerator)
+
+        // Can't foreach over this because the lowering the compiler does for it breaks the reassignment we have to do below
+        // The enumerator the foreach would be holding onto in that scenario has a stale ReadOnlySpan<char> input, which led to OOR exceptions inside ReplaceCore
+        // It was being passed values that target indices valid within the previous buffer (the one the foreach's input was still holding onto), but potentially not the current one if the replacement was shorter than the match (which caused Length to decrease)
+        // On the other hand, if the replacement was longer, indices would always end up valid, but the operation would silently produce incorrect results
+        // This goes for pretty much every use of ValueMatchEnumerator
+
+        while (currentEnumerator.MoveNext())
         {
+            var vm = currentEnumerator.Current;
             // There is unfortunately no easier way to do this since each match may vary in length.
             ReplaceCore(vm.Index, vm.Length, to);
             if (to.Length != vm.Length)
             {
+                var newStart = vm.Index + to.Length;
                 // If the replacement length is different, we need a new enumerator
-                currentEnumerator = regex.EnumerateMatches(Span, vm.Index + to.Length);
+                currentEnumerator = regex.EnumerateMatches(Span, newStart);
             }
         }
     }
@@ -1166,14 +1135,17 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
     public void Replace(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
         if (bufferSize < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be non-negative.");
         }
 
         // Specifying length == 0 is... weird, but we allow it for consistency
-        if (bufferSize == 0)
+        if (bufferSize == 0 || writeReplacementAction is null)
         {
             Replace(regex, default);
             return;
@@ -1201,22 +1173,27 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements or, consequently, retain any content from the previous iteration.</param>
     public void ReplaceAll(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
         if (bufferSize < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be non-negative.");
         }
 
-        if (bufferSize == 0)
+        if (bufferSize == 0 || writeReplacementAction is null)
         {
-            Replace(regex, default);
+            ReplaceAll(regex, default);
             return;
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         var currentEnumerator = regex.EnumerateMatches(Span);
-        foreach (var vm in currentEnumerator)
+
+        while (currentEnumerator.MoveNext())
         {
+            var vm = currentEnumerator.Current;
             // Clear the buffer, otherwise previous iteration's data may bleed through if the new content is shorter
             buffer.Clear();
 
@@ -1228,10 +1205,11 @@ public partial class StringWeaver : IBufferWriter<char>
                 to = buffer[..endIdx];
             }
             ReplaceCore(vm.Index, vm.Length, to);
-            if (buffer.Length != vm.Length)
+            if (to.Length != vm.Length)
             {
+                var newStart = vm.Index + to.Length;
                 // If the replacement length is different, we need a new enumerator
-                currentEnumerator = regex.EnumerateMatches(Span, vm.Index + to.Length);
+                currentEnumerator = regex.EnumerateMatches(Span, newStart);
             }
         }
     }
@@ -1243,13 +1221,16 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
     public void ReplaceExact(Regex regex, int length, StringWeaverWriter writeReplacementAction)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
         if (length < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(length), "Length must be non-negative.");
         }
 
-        if (length == 0)
+        if (length == 0 || writeReplacementAction is null)
         {
             Replace(regex, default);
             return;
@@ -1271,13 +1252,16 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements.</param>
     public void ReplaceAllExact(Regex regex, int length, StringWeaverWriter writeReplacementAction)
     {
-        ArgumentNullException.ThrowIfNull(regex);
+        if (regex is null)
+        {
+            throw new ArgumentNullException(nameof(regex), "Regex cannot be null.");
+        }
         if (length < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(length), "Length must be non-negative.");
         }
 
-        if (length == 0)
+        if (length == 0 || writeReplacementAction is null)
         {
             ReplaceAll(regex, default);
             return;
@@ -1285,17 +1269,20 @@ public partial class StringWeaver : IBufferWriter<char>
 
         var buffer = length <= SafeCharStackalloc ? stackalloc char[length] : new char[length];
         var currentEnumerator = regex.EnumerateMatches(Span);
-        foreach (var vm in currentEnumerator)
+
+        while (currentEnumerator.MoveNext())
         {
+            var vm = currentEnumerator.Current;
             // Clear the buffer, otherwise previous iteration's data may bleed through if the new content is shorter
             buffer.Clear();
 
             writeReplacementAction(buffer, Span.Slice(vm));
             ReplaceCore(vm.Index, vm.Length, buffer);
-            if (buffer.Length != vm.Length)
+            if (length != vm.Length)
             {
+                var newStart = vm.Index + length;
                 // If the replacement length is different, we need a new enumerator
-                currentEnumerator = regex.EnumerateMatches(Span, vm.Index + buffer.Length);
+                currentEnumerator = regex.EnumerateMatches(Span, newStart);
             }
         }
     }
@@ -1795,7 +1782,7 @@ public partial class StringWeaver : IBufferWriter<char>
     {
         Version++;
 
-        Array.Resize(ref buffer, Helpers.NextPowerOf2(requiredCapacity));
+        Array.Resize(ref buffer, Pow2.NextPowerOf2(requiredCapacity));
     }
     #endregion
 
