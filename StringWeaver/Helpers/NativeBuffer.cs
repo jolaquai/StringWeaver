@@ -112,7 +112,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Grow() => Grow(Capacity + 1);
     /// <summary>
-    /// Reallocates the underlying memory block unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> characters.
+    /// Reallocates the underlying memory block unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> instances of <typeparamref name="T"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public void Grow(int requiredCapacity)
@@ -193,17 +193,20 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     }
     public override void Unpin()
     {
+        // No EnsureUsable call in here!
+
         if (Interlocked.Decrement(ref pinCount) < 0)
         {
             Debug.Fail("Unbalanced Unpin() call detected.");
             Interlocked.Exchange(ref pinCount, 0);
         }
 
-        if (freePending && pinCount == 0)
+        var ptr = (nint)pointer;
+        if (disposed && freePending && pinCount == 0 && ptr != 0)
         {
-            Marshal.FreeHGlobal(PointerValue);
+            Marshal.FreeHGlobal(ptr);
             freePending = false;
-            disposed = true;
+            pointer = _nullPtr;
         }
     }
     protected override void Dispose(bool disposing)
@@ -213,7 +216,6 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
             return;
         }
         freePending = true;
-        disposed = true;
 
         if (_wipeOnDispose)
         {
@@ -221,12 +223,15 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
         }
 
         var ptr = PointerValue;
-        Pointer = _nullPtr;
 
         if (pinCount == 0)
         {
             Marshal.FreeHGlobal(ptr);
+            freePending = false;
+            Pointer = _nullPtr;
         }
+
+        disposed = true;
         // If we didn't dispose, the last Unpin call is now responsible for that
     }
     protected override bool TryGetArray(out ArraySegment<T> segment)

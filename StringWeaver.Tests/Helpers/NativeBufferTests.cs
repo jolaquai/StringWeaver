@@ -26,7 +26,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(100);
 
-        var expectedCapacity = Pow2.NextPowerOf2(100);
+        var expectedCapacity = Pow2.NextPowerOf2(100 * sizeof(byte));
         Assert.Equal(expectedCapacity, buffer.Capacity);
     }
 
@@ -255,7 +255,7 @@ public unsafe class NativeBufferTests
 
         handle.Dispose();
 
-        Assert.Equal(nint.Zero, buffer.PointerValue);
+        Assert.Equal(0, (nint)buffer.pointer);
         Assert.True(buffer.disposed);
         Assert.False(buffer.freePending);
         Assert.Equal(0, buffer.pinCount);
