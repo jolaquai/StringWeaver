@@ -24,16 +24,6 @@ Namespace: `global::StringWeaver`
   * Consider using this if you frequently create `StringWeaver`s with capacities near `int.MaxValue` or instances which are very long-lived.
   * (!) Note that `UnsafeStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `UnsafeStringWeaver` is a memory leak.
 
-## Specialized
-
-Namespace: `global::StringWeaver.Specialized`
-
-* `PooledStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from a `System.Buffers.ArrayPool<char>` to minimize allocations.
-  * Managed entirely by `PooledStringWeaverManager`, which supports several configuration settings you may use to control the behavior of the pool.
-  * Unique to this implementation is the fact that the backing storage may end up fragmented/non-contiguous. While this is mostly an implementation detail, it has functional and performance implications when access to the backing storage is required. Since the type cannot guarantee direct access to be valid, writers must use the `IBufferWriter<char>` API. Readers may use the `GetReadOnlySequence` method to obtain a `ReadOnlySequence<char>`, giving a chunked and immutable, but zero-copy view over the buffer contents.
-  * Consider using this if you frequently create short-lived `StringWeaver`s with medium capacities.
-  * There are several 
-
 # Inheritance
 
 `StringWeaver` itself is not `sealed` because `UnsafeStringWeaver` inherits from it. As such, inheritance from `StringWeaver` is allowed for external types as well. There are only a select few members you must override to make your implementation function correctly, everything else (functionality-wise) is handled for you (and not virtual, for that matter):
@@ -46,8 +36,6 @@ Namespace: `global::StringWeaver.Specialized`
 Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
 
 (!) The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
-
-Note that the above setup is the reason `PooledStringWeaver` does not inherit from and exposes an API surface vastly different than that of `StringWeaver`: multiple non-contiguous pooled buffers (or ones larger in size than `int.MaxValue`) cannot be exposed as a single `Memory<char>`.
 
 # Global configuration
 
