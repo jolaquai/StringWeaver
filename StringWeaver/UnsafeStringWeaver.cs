@@ -32,7 +32,7 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
 
     #region .ctors
     /// <summary>
-    /// Initializes a new <see cref="UnsafeStringWeaver"/> with the default capacity of 256.
+    /// Initializes a new <see cref="UnsafeStringWeaver"/> with the default capacity of 1024.
     /// </summary>
     public UnsafeStringWeaver() : this([], DefaultCapacity) { }
     /// <summary>
