@@ -48,6 +48,7 @@ public sealed class PooledStringWeaver : StringWeaver, IDisposable
     }
 
     #region Cleanup
+    private volatile int disposed;
     /// <inheritdoc/>
     ~PooledStringWeaver() => Dispose(false);
     /// <inheritdoc/>
@@ -58,6 +59,10 @@ public sealed class PooledStringWeaver : StringWeaver, IDisposable
     }
     private void Dispose(bool disposing)
     {
+        if (Interlocked.Exchange(ref disposed, 1) == 1)
+        {
+            return;
+        }
         if (disposing)
         {
             _pool.Return(buffer);

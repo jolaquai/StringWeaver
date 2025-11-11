@@ -187,12 +187,12 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             if (index.Value < 0)
             {
-                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             var offset = index.GetOffset(Length);
             if (offset < 0 || offset >= Length)
             {
-                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             return FullSpan[offset];
         }
@@ -200,12 +200,12 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             if (index.Value < 0)
             {
-                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
             var offset = index.GetOffset(Length);
             if (offset < 0 || offset >= Length)
             {
-                throw new ArgumentOutOfRangeException($"Index ({index}) must be within the bounds of the used portion of the buffer.");
+                throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
 
             Version++;
