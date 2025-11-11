@@ -11,7 +11,7 @@ public delegate ReadOnlySpan<char> StringWeaverReplacementFactory(ReadOnlySpan<c
 /// <summary>
 /// Represents a method that writes a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to a given weaver.
 /// </summary>
-/// <param name="buffer">the buffer to write the replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to.</param>
+/// <param name="buffer">The buffer to write the replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to.</param>
 /// <param name="match">The matched <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
 public delegate void StringWeaverWriter(Span<char> buffer, ReadOnlySpan<char> match);
 
@@ -448,7 +448,7 @@ public partial class StringWeaver : IBufferWriter<char>
             throw new ArgumentOutOfRangeException(nameof(start), "Start index must be within the bounds of the used portion of the buffer.");
         }
 
-        // Can't possible find it if it's longer than the remaining span
+        // Can't possibly find it if it's longer than the remaining span
         if (value.Length > Length - start)
         {
             return -1;
@@ -754,7 +754,7 @@ public partial class StringWeaver : IBufferWriter<char>
             // Also easy, copy everything after index + len to index + to.Length
             if (index + len < Length)
             {
-                // Even better if there's nothing remaining since there's nothing we needs to copy
+                // Even better if there's nothing remaining since there's nothing we need to copy
                 var remaining = Span[(index + len)..];
                 remaining.CopyTo(Span[(index + to.Length)..]);
             }
@@ -1728,7 +1728,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Copies the contents of the used portion of the buffer into the specified <paramref name="destination"/> <see langword="char"/> array.
     /// </summary>
     /// <param name="destination">The destination <see langword="char"/> array to copy the buffer contents into.</param>
-    /// <param name="index"></param>
+    /// <param name="index">The zero-based index in <paramref name="destination"/> at which to begin copying the buffer contents.</param>
     /// <exception cref="ArgumentException">Thrown when the Length of <paramref name="destination"/> minus <paramref name="index"/> is less than the Length of the used portion of the buffer.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="index"/> is negative or exceeds the Length of <paramref name="destination"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

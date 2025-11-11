@@ -1,7 +1,7 @@
 ﻿namespace StringWeaver;
 
 /// <summary>
-/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC _pressure for very large buffers.
+/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
 /// </summary>
 internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
 {
