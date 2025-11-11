@@ -49,7 +49,7 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     /// Initializes a new <see cref="UnsafeStringWeaver"/> with the specified initial content and capacity.
     /// </summary>
     /// <param name="initialContent">A <see langword="string"/> that will be copied into the buffer.</param>
-    /// <param name="capacity">The initial capacity of the buffer's backing memory. Must not be less than the length of <paramref name="initialContent"/>.</param>
+    /// <param name="capacity">The initial capacity of the buffer's backing memory. Must not be less than the Length of <paramref name="initialContent"/>.</param>
     public UnsafeStringWeaver(string initialContent, int capacity) : this(initialContent.AsSpan(), capacity) { }
     /// <summary>
     /// Initializes a new <see cref="UnsafeStringWeaver"/> with the specified initial content.
@@ -60,7 +60,7 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     /// Initializes a new <see cref="UnsafeStringWeaver"/> with the specified initial content and capacity.
     /// </summary>
     /// <param name="initialContent">The initial content to copy into the buffer.</param>
-    /// <param name="capacity">The initial capacity of the buffer's backing memory. Must not be less than the length of <paramref name="initialContent"/>.</param>
+    /// <param name="capacity">The initial capacity of the buffer's backing memory. Must not be less than the Length of <paramref name="initialContent"/>.</param>
     public UnsafeStringWeaver(ReadOnlySpan<char> initialContent, int capacity)
     {
         if (capacity < initialContent.Length)
@@ -97,7 +97,7 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
         _buffer = new NativeBuffer<char>(other.Capacity);
         Length = span.Length;
 
-        // More efficient than non-generic Array.Copy plus constrained to the occupied length
+        // More efficient than non-generic Array.Copy plus constrained to the occupied Length
         other.Span.CopyTo(Span);
     }
     #endregion
@@ -109,14 +109,10 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     protected override void Grow(int requiredCapacity) => _buffer.Grow(requiredCapacity);
 
     #region Cleanup
-    ~UnsafeStringWeaver()
-    {
-        Dispose();
-        Debug.Fail("UnsafeStringWeaver had to be finalized.");
-    }
+    ~UnsafeStringWeaver() => Dispose();
     public void Dispose()
     {
-        ((IDisposable)_buffer).Dispose();
+        ((IDisposable)_buffer)?.Dispose();
         GC.SuppressFinalize(this);
     }
     #endregion

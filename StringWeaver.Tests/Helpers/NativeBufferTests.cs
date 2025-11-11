@@ -1,4 +1,7 @@
-﻿using StringWeaver.Helpers;
+﻿using System;
+using System.Runtime.CompilerServices;
+
+using StringWeaver.Helpers;
 
 namespace StringWeaver.Tests.Helpers;
 
@@ -26,7 +29,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(100);
 
-        var expectedCapacity = Pow2.NextPowerOf2(100 * sizeof(byte));
+        var expectedCapacity = global::StringWeaver.Helpers.Pow2.NextPowerOf2(100 * sizeof(byte));
         Assert.Equal(expectedCapacity, buffer.Capacity);
     }
 
@@ -201,6 +204,26 @@ public unsafe class NativeBufferTests
 
         handle1.Dispose();
         handle2.Dispose();
+    }
+
+    [Fact]
+    public void Unpin_Manual_AllowsMultipleCalls()
+    {
+        using var buffer = new NativeBuffer<int>(10);
+        var handle1 = buffer.Pin();
+        var handle2 = buffer.Pin();
+
+        buffer.Unpin();
+        buffer.Unpin();
+    }
+    
+    [Fact]
+    public void Unpin_UnbalancedCalls_AreFixedUp()
+    {
+        using var buffer = new NativeBuffer<int>(10);
+        buffer.Unpin();
+
+        Assert.Equal(0, buffer.pinCount);
     }
 
     [Fact]
@@ -430,4 +453,16 @@ public unsafe class NativeBufferTests
         Assert.Equal(42, span1[0]);
         Assert.Equal(99, span2[0]);
     }
+
+    [Fact]
+    public void TryGetArray_ReturnsFalse()
+    {
+        using var buffer = new NativeBuffer<int>(10);
+        Assert.False(Accessors<int>.TryGetArray(buffer, out var _));
+    }
+}
+
+internal static class Accessors<T> where T : unmanaged
+{
+    [UnsafeAccessor(UnsafeAccessorKind.Method)] public static extern bool TryGetArray(NativeBuffer<T> nativeBuffer, out ArraySegment<T> arraySegment);
 }

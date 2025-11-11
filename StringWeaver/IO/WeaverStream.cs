@@ -1,17 +1,8 @@
 ﻿namespace StringWeaver.IO;
 
-internal sealed class WeaverStream(StringWeaver weaver, Encoding encoding, Action onDispose = null) : Stream
+internal sealed class WeaverStream(StringWeaver weaver, Encoding encoding) : Stream
 {
-    private StringWeaver _weaver = weaver;
     private readonly Decoder _decoder = encoding.GetDecoder();
-
-    private void EnsureUsable()
-    {
-        if (_weaver is null)
-        {
-            throw new ObjectDisposedException(nameof(StringWeaver), "The Stream has been disposed.");
-        }
-    }
 
     public override bool CanRead
     {
@@ -88,29 +79,57 @@ internal sealed class WeaverStream(StringWeaver weaver, Encoding encoding, Actio
             throw new ArgumentOutOfRangeException(nameof(offset), $"{nameof(offset)} and {nameof(count)} must specify a valid range in the buffer.");
         }
 
-        var source = _weaver.FullSpan.Slice(offset, count);
-        var charCount = _decoder.GetCharCount(buffer, offset, count);
-        var destination = _weaver.GetWritableSpan(charCount);
-        Debug.Assert(destination.Length != 0, "destination buffer returned must never be 0-length");
-        unsafe
+        var source = buffer.AsSpan(offset, count);
+        Write(source);
+    }
+    public
+#if !NETSTANDARD2_0
+        override
+#endif
+        unsafe void Write(ReadOnlySpan<byte> buffer)
+    {
+        EnsureUsable();
+        if (buffer.Length == 0)
         {
-            var srcPtr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(source));
-            var destPtr = (char*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination));
-            var written = _decoder.GetChars(srcPtr, source.Length, destPtr, charCount, true);
-            _weaver.Expand(written);
+            return;
+        }
+
+        var srcPtr = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buffer));
+
+        var charCount = _decoder.GetCharCount(srcPtr, buffer.Length, false);
+        var destination = weaver.GetWritableSpan(charCount);
+        Debug.Assert(destination.Length != 0, "destination buffer returned must never be 0-length");
+        var destPtr = (char*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination));
+
+        var writtenTotal = 0;
+        while (writtenTotal < charCount)
+        {
+            // Decided to do this for the general path instead of #if'ing for Span<T> overloads
+            var written = _decoder.GetChars(srcPtr + writtenTotal, buffer.Length - writtenTotal, destPtr + writtenTotal, charCount - writtenTotal, true);
+            writtenTotal += written;
+            weaver.Expand(written);
         }
     }
 
-    /// <summary>
-    /// Releases the reference to the underlying <see cref="StringWeaver"/>.
-    /// </summary>
+    private volatile int disposed;
+    private void EnsureUsable()
+    {
+        if (disposed == 1)
+        {
+            throw new ObjectDisposedException(nameof(StringWeaver), "The Stream has been disposed.");
+        }
+    }
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
-        {
-            onDispose();
-            _weaver = null;
-        }
-        base.Dispose(disposing);
+        // This is a nop, but we'll flag as being disposed for consistency
+        _ = Interlocked.Exchange(ref disposed, 1);
+        base.Dispose(true);
     }
+#if !NETSTANDARD2_0
+    public override ValueTask DisposeAsync()
+    {
+        _ = Interlocked.Exchange(ref disposed, 1);
+        return base.DisposeAsync();
+    }
+#endif
 }

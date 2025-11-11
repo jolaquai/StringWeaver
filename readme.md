@@ -22,7 +22,13 @@ Namespace: `global::StringWeaver`
   * The default `StringWeaver` should be the first choice for the ordinary consumer. Where profiling shows that a different implementation would be more beneficial, consider the alternatives described below.
 * `UnsafeStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from unmanaged instead of managed memory. This has the benefit of not causing any GC pressure while exposing exactly the same APIs as the default `StringWeaver`.
   * Consider using this if you frequently create `StringWeaver`s with capacities near `int.MaxValue` or instances which are very long-lived.
-  * (!) Note that `UnsafeStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `UnsafeStringWeaver` is a memory leak.
+  * (!) `UnsafeStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `UnsafeStringWeaver` is a memory leak.
+
+## Specialized
+
+* `PooledStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from `ArrayPool<char>.Shared` (or your own passed implementation of `ArrayPool<char>`). This allows keeping GC pressure low while still using managed memory.
+  * Consider using this if you frequently create and dispose of `StringWeaver`s with moderate capacities (e.g. a few dozen kB or more).
+  * (!) `PooledStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `PooledStringWeaver` causes the buffer backing it to be lost to the pool, which is a memory leak and degrades performance of every other user of that `ArrayPool<char>` in your application.
 
 # Inheritance
 
@@ -30,7 +36,7 @@ Namespace: `global::StringWeaver`
 
 * `Memory<char> FullMemory`: Gets a `Memory<char>` instance over the entire backing storage (NOT just the used portion).
 * `void Grow(int requiredCapacity)`: WITHOUT checking whether it is required, expands the backing storage to at least the specified capacity (those checks are done for you before this `virtual` method is ever called). It is recommended you decorate your `override` with `[MethodImpl(MethodImplOptions.NoInlining)]`.
-* (!) Note that `ToString` is `sealed override` in the base `StringWeaver`.
+* (!) `StringWeaver.ToString` (the base version) is `sealed override`.
 * `IBufferWriter<char>` implementations and `Stream` support are both handled internally as well. Do not re-implement either of those.
 
 Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".

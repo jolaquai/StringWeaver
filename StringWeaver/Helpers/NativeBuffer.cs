@@ -197,7 +197,6 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
 
         if (Interlocked.Decrement(ref pinCount) < 0)
         {
-            Debug.Fail("Unbalanced Unpin() call detected.");
             Interlocked.Exchange(ref pinCount, 0);
         }
 
@@ -242,19 +241,11 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ValidateIndexTwise(int index)
+    internal void ValidateIndexTwise(int index)
     {
         if (index < 0 || index >= Capacity)
         {
             throw new ArgumentOutOfRangeException(nameof(index), "Element index must be within the bounds of the memory block.");
-        }
-    }
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ValidateIndexBytewise(int index)
-    {
-        if (index < 0 || index >= CapacityBytes)
-        {
-            throw new ArgumentOutOfRangeException(nameof(index), "Byte index must be within the bounds of the memory block.");
         }
     }
     #endregion

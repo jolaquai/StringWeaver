@@ -39,34 +39,4 @@ internal static class Pow2
         n |= n >> 32;
         return n + 1;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static nint NextPowerOf2Native(nint n)
-    {
-        if (n <= 0)
-        {
-            return 0;
-        }
-
-        if (IntPtr.Size == 8)
-        {
-            var v = (ulong)n - 1;
-            if (v >= (1UL << 62))
-            {
-                return 0;
-            }
-
-            v |= v >> 1;
-            v |= v >> 2;
-            v |= v >> 4;
-            v |= v >> 8;
-            v |= v >> 16;
-            v |= v >> 32;
-            return (nint)(v + 1);
-        }
-        else
-        {
-            return NextPowerOf2(Unsafe.As<nint, int>(ref n));
-        }
-    }
 }

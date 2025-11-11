@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace StringWeaver.Tests;
@@ -548,6 +549,27 @@ public class StringWeaverTests
     }
 
     [Fact]
+    public void ReplaceAll_SpanToSpan_SupportsMoreThanDefaultNumberOfMatches()
+    {
+        var weaver = new StringWeaver(new string('A', 257));
+        weaver.ReplaceAll(['A'], ['B']);
+
+        Assert.Equal(new string('B', 257), weaver.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_SpanToSpan_SeqEqButNoOverlapping_DoesNothing()
+    {
+        var first = new char[4] { 'a', 'b', 'c', 'd' };
+        var second = new char[4] { 'a', 'b', 'c', 'd' };
+
+        var weaver = new StringWeaver("abcdabcdabcd");
+        weaver.ReplaceAll(first, second);
+
+        Assert.Equal("abcdabcdabcd", weaver.ToString());
+    }
+
+    [Fact]
     public void Replace_EmptySpan_ThrowsArgumentException()
     {
         var weaver = new StringWeaver("hello");
@@ -677,12 +699,16 @@ public class StringWeaverTests
         Assert.Equal("helloXXXworld", weaver.ToString());
     }
 
+    // since this is only used for tests where we are contractually guaranteed to never be called, extract this and exclude from code coverage
+    [ExcludeFromCodeCoverage]
+    private static void NopStringWeaverWriterDelegate(scoped Span<char> buffer, scoped ReadOnlySpan<char> match) { }
+
     [Fact]
     public void Replace_PcreRegexWithWriterZeroBufferSize_ReplacesWithEmpty()
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.Replace(regex, 0, static (buffer, match) => { });
+        weaver.Replace(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -704,7 +730,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new PcreRegex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.Replace(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.Replace(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -732,7 +758,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceExact(regex, 0, static (buffer, match) => { });
+        weaver.ReplaceExact(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -823,7 +849,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new Regex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceExact(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceExact(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1231,35 +1257,6 @@ public class StringWeaverTests
     }
 
     [Fact]
-    public void GetStream_ReturnsStreamWithDefaultEncoding()
-    {
-        var weaver = new StringWeaver();
-        var stream = weaver.GetStream();
-
-        Assert.NotNull(stream);
-        Assert.True(stream.CanWrite);
-    }
-
-    [Fact]
-    public void GetStream_ReturnsStreamWithSpecifiedEncoding()
-    {
-        var weaver = new StringWeaver();
-        var stream = weaver.GetStream(Encoding.UTF8);
-
-        Assert.NotNull(stream);
-    }
-
-    [Fact]
-    public void GetStream_ReturnsSameInstanceWhenNotDisposed()
-    {
-        var weaver = new StringWeaver();
-        var stream1 = weaver.GetStream();
-        var stream2 = weaver.GetStream();
-
-        Assert.Same(stream1, stream2);
-    }
-
-    [Fact]
     public void ToString_ReturnsStringRepresentation()
     {
         var weaver = new StringWeaver("hello");
@@ -1661,7 +1658,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new PcreRegex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceExact(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceExact(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1681,7 +1678,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new PcreRegex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceAllExact(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceAllExact(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1689,7 +1686,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new PcreRegex(@"\d+");
-        weaver.ReplaceAllExact(regex, 0, static (buffer, match) => { });
+        weaver.ReplaceAllExact(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1715,7 +1712,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello");
 
-        Assert.Throws<ArgumentNullException>(() => weaver.Replace((Regex)null, 10, (b, m) => { }));
+        Assert.Throws<ArgumentNullException>(() => weaver.Replace((Regex)null, 10, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1724,7 +1721,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new Regex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.Replace(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.Replace(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1732,7 +1729,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.Replace(regex, 0, static (buffer, match) => { });
+        weaver.Replace(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1754,7 +1751,7 @@ public class StringWeaverTests
         var weaver = new StringWeaver("hello");
         var regex = new Regex(@"\w+");
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceAll(regex, -1, (b, m) => { }));
+        Assert.Throws<ArgumentOutOfRangeException>(() => weaver.ReplaceAll(regex, -1, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1762,7 +1759,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAll(regex, 0, static (buffer, match) => { });
+        weaver.ReplaceAll(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1772,7 +1769,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello");
 
-        Assert.Throws<ArgumentNullException>(() => weaver.ReplaceExact((Regex)null, 3, (b, m) => { }));
+        Assert.Throws<ArgumentNullException>(() => weaver.ReplaceExact((Regex)null, 3, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1780,7 +1777,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceExact(regex, 0, static (buffer, match) => { });
+        weaver.ReplaceExact(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1801,7 +1798,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello");
 
-        Assert.Throws<ArgumentNullException>(() => weaver.ReplaceAllExact((Regex)null, 3, (b, m) => { }));
+        Assert.Throws<ArgumentNullException>(() => weaver.ReplaceAllExact((Regex)null, 3, NopStringWeaverWriterDelegate));
     }
 
     [Fact]
@@ -1820,7 +1817,7 @@ public class StringWeaverTests
     {
         var weaver = new StringWeaver("hello123world456");
         var regex = new Regex(@"\d+");
-        weaver.ReplaceAllExact(regex, 0, static (buffer, match) => { });
+        weaver.ReplaceAllExact(regex, 0, NopStringWeaverWriterDelegate);
 
         Assert.Equal("helloworld", weaver.ToString());
     }
@@ -1929,6 +1926,30 @@ public class StringWeaverTests
         Assert.Equal(2, indices.Count);
         Assert.Equal(6, indices[0]);
         Assert.Equal(12, indices[1]);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_StartBeyondLength_ThrowsArgumentOutOfRangeException()
+    {
+        var weaver = new StringWeaver();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            var enumerator = weaver.EnumerateIndicesOf(['x'], 1);
+            Assert.False(enumerator.MoveNext());
+        });
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_StartBeyondLength_ThrowsArgumentOutOfRangeException()
+    {
+        var weaver = new StringWeaver();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            var enumerator = weaver.EnumerateIndicesOfUnsafe(['x'], 1);
+            Assert.False(enumerator.MoveNext());
+        });
     }
 
     [Fact]
