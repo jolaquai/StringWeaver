@@ -8,6 +8,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
+    <RollForward>LatestMajor</RollForward>
+
     <AnalysisMode>recommended</AnalysisMode>
     <AnalysisModePerformance>all</AnalysisModePerformance>
 
