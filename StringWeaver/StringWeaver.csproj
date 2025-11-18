@@ -16,7 +16,7 @@
 
   <PropertyGroup>
       <AssemblyName>StringWeaver</AssemblyName>
-      <Version>1.1.0</Version>
+      <Version>2.0.0</Version>
       <AssemblyVersion>$(Version)</AssemblyVersion>
       <FileVersion>$(Version)</FileVersion>
       <IsPackable>True</IsPackable>
@@ -64,11 +64,13 @@
   </ItemGroup>
 
   <ItemGroup>
-      <None Include="readme.md" Pack="True" PackagePath="\" />
+      <_MarkdownFiles Include="*.md" />
+      <None Include="@(_MarkdownFiles)" Pack="True" PackagePath="/" />
   </ItemGroup>
-  <!-- Copy readme.md from this project's directory into the solution directory -->
-  <Target Name="GlobalizeReadmeMd" BeforeTargets="Pack;Build">
-      <Copy ContinueOnError="WarnAndContinue" Retries="3" OverwriteReadOnlyFiles="True" SourceFiles="$(MSBuildProjectDirectory)\readme.md" DestinationFolder="$(SolutionDir)" />
+
+  <!-- Copy (*.md)s from this project's directory into the solution directory -->
+  <Target Name="GlobalizeMds" BeforeTargets="Pack;Build">
+      <Copy ContinueOnError="WarnAndContinue" Retries="3" OverwriteReadOnlyFiles="True" SourceFiles="@(_MarkdownFiles)" DestinationFolder=".." />
   </Target>
 
 </Project>

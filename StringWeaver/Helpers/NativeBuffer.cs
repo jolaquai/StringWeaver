@@ -89,7 +89,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     public NativeBuffer(int count, bool wipeOnDispose = false, bool? pressure = null)
     {
         // This is safe to do since ReAllocHGlobal just delegates to AllocHGlobal when passed a nullptr for the "previous" pointer
-        Grow(count);
+        Grow(count, 0);
         _wipeOnDispose = wipeOnDispose;
         _pressure = pressure;
     }
@@ -99,31 +99,35 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     /// Grows the underlying memory block if <paramref name="requiredCapacity"/> exceeds the current capacity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void GrowIfNeeded(int requiredCapacity)
+    public void GrowIfNeeded(int requiredCapacity, int startIndex)
     {
-        if (requiredCapacity > Capacity)
+        if (requiredCapacity > Capacity - startIndex)
         {
-            Grow(requiredCapacity);
+            Grow(requiredCapacity, startIndex);
         }
     }
-    /// <summary>
-    /// Reallocates the underlying memory block unconditionally, ensuring at least twice the previous capacity (if possible).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Grow() => Grow(Capacity + 1);
     /// <summary>
     /// Reallocates the underlying memory block unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> instances of <typeparamref name="T"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void Grow(int requiredCapacity)
+    public void Grow(int requiredCapacity, int startIndex)
     {
         Version++;
 
         var previousSize = CapacityBytes;
 
         var newSize = Pow2.NextPowerOf2(requiredCapacity * (long)_sizeOfT);
-        Pointer = (T*)Marshal.ReAllocHGlobal(PointerValue, (nint)newSize);
 
+        var newAlloc = (T*)Marshal.AllocHGlobal((nint)newSize);
+
+        if (Pointer != _nullPtr)
+        {
+            var span = new Span<T>(newAlloc, (int)(newSize / _sizeOfT));
+            Memory.Span[startIndex..].CopyTo(span);
+            Marshal.FreeHGlobal((nint)Pointer);
+        }
+
+        Pointer = newAlloc;
         Capacity = (int)(newSize / _sizeOfT);
 
         var allocDiff = newSize - previousSize;

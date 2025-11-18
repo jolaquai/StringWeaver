@@ -7,7 +7,7 @@ public sealed class UnsafeStringWeaverTests
     {
         var weaver = new UnsafeStringWeaver();
 
-        Assert.Equal(0, weaver.Length);
+        Assert.Equal(0, weaver.End);
         Assert.True(weaver.Capacity >= 1024);
     }
 
@@ -16,7 +16,7 @@ public sealed class UnsafeStringWeaverTests
     {
         var weaver = new UnsafeStringWeaver(2048);
 
-        Assert.Equal(0, weaver.Length);
+        Assert.Equal(0, weaver.End);
         Assert.True(weaver.Capacity >= 2048);
     }
 
@@ -26,7 +26,7 @@ public sealed class UnsafeStringWeaverTests
         var initial = "Hello World";
         var weaver = new UnsafeStringWeaver(initial);
 
-        Assert.Equal(initial.Length, weaver.Length);
+        Assert.Equal(initial.Length, weaver.End);
         Assert.Equal(initial, weaver.ToString());
     }
 
@@ -35,7 +35,7 @@ public sealed class UnsafeStringWeaverTests
     {
         var weaver = new UnsafeStringWeaver(string.Empty);
 
-        Assert.Equal(0, weaver.Length);
+        Assert.Equal(0, weaver.End);
         Assert.True(weaver.Capacity >= 1024);
     }
 
@@ -45,7 +45,7 @@ public sealed class UnsafeStringWeaverTests
         var initial = "Test";
         var weaver = new UnsafeStringWeaver(initial, 2048);
 
-        Assert.Equal(initial.Length, weaver.Length);
+        Assert.Equal(initial.Length, weaver.End);
         Assert.Equal(initial, weaver.ToString());
         Assert.True(weaver.Capacity >= 2048);
     }
@@ -59,7 +59,7 @@ public sealed class UnsafeStringWeaverTests
         var initial = "Span Content".AsSpan();
         var weaver = new UnsafeStringWeaver(initial);
 
-        Assert.Equal(initial.Length, weaver.Length);
+        Assert.Equal(initial.Length, weaver.End);
         Assert.Equal("Span Content", weaver.ToString());
     }
 
@@ -68,7 +68,7 @@ public sealed class UnsafeStringWeaverTests
     {
         var weaver = new UnsafeStringWeaver([]);
 
-        Assert.Equal(0, weaver.Length);
+        Assert.Equal(0, weaver.End);
         Assert.True(weaver.Capacity >= 1024);
     }
 
@@ -78,7 +78,7 @@ public sealed class UnsafeStringWeaverTests
         var initial = "Test".AsSpan();
         var weaver = new UnsafeStringWeaver(initial, 2048);
 
-        Assert.Equal(initial.Length, weaver.Length);
+        Assert.Equal(initial.Length, weaver.End);
         Assert.Equal("Test", weaver.ToString());
         Assert.True(weaver.Capacity >= 2048);
     }
@@ -96,7 +96,7 @@ public sealed class UnsafeStringWeaverTests
         var span = "Hi".AsSpan();
         var weaver = new UnsafeStringWeaver(span, 512);
 
-        Assert.Equal(2, weaver.Length);
+        Assert.Equal(2, weaver.End);
         Assert.True(weaver.Capacity >= 1024);
     }
 
@@ -106,7 +106,7 @@ public sealed class UnsafeStringWeaverTests
         var original = new UnsafeStringWeaver("Original");
         var weaver = new UnsafeStringWeaver(original);
 
-        Assert.Equal(original.Length, weaver.Length);
+        Assert.Equal(original.End, weaver.End);
         Assert.Equal(original.ToString(), weaver.ToString());
         Assert.NotEqual(original.PointerValue, weaver.PointerValue);
 
@@ -138,7 +138,7 @@ public sealed class UnsafeStringWeaverTests
     {
         var weaver = new UnsafeStringWeaver("Test", 2048);
 
-        var memory = weaver.FullMemory;
+        var memory = weaver.UsableMemory;
         Assert.True(memory.Length >= 2048);
     }
 
@@ -154,7 +154,7 @@ public sealed class UnsafeStringWeaverTests
         }
 
         Assert.True(weaver.Capacity > initialCapacity);
-        Assert.Equal(initialCapacity + 1, weaver.Length);
+        Assert.Equal(initialCapacity + 1, weaver.End);
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public sealed class UnsafeStringWeaverTests
         var span = "Hi".AsSpan();
         var weaver = new UnsafeStringWeaver(span, 1024);
 
-        Assert.Equal(2, weaver.Length);
+        Assert.Equal(2, weaver.End);
         Assert.True(weaver.Capacity >= 1024);
     }
 
@@ -182,7 +182,7 @@ public sealed class UnsafeStringWeaverTests
         var span = "TestContent".AsSpan();
         var weaver = new UnsafeStringWeaver(span, span.Length);
 
-        Assert.Equal(span.Length, weaver.Length);
+        Assert.Equal(span.Length, weaver.End);
         Assert.Equal("TestContent", weaver.ToString());
     }
 
@@ -192,7 +192,7 @@ public sealed class UnsafeStringWeaverTests
         var span = "Small".AsSpan();
         var weaver = new UnsafeStringWeaver(span, 10000);
 
-        Assert.Equal(5, weaver.Length);
+        Assert.Equal(5, weaver.End);
         Assert.True(weaver.Capacity >= 10000);
     }
 
@@ -202,7 +202,7 @@ public sealed class UnsafeStringWeaverTests
         var original = new UnsafeStringWeaver();
         var weaver = new UnsafeStringWeaver(original);
 
-        Assert.Equal(0, weaver.Length);
+        Assert.Equal(0, weaver.End);
         original.Dispose();
     }
 

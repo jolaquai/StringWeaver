@@ -2,7 +2,7 @@ The `StringWeaver` package exposes a custom high-performance builder for `string
 
 # Consumption
 
-The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions.
+The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions:
 
 * Core functionality is exposed in the `netstandard2.0` compilation, meaning any conforming project platform can use it.
 * A dependency on `PCRE.NET` is introduced to facilitate all regex operations on `StringWeaver` to meet performance goals/allocation minimums for `< net7.0`.
@@ -14,6 +14,8 @@ Unfortunately, neither `PCRE.NET` nor `System.Text.RegularExpressions` expose al
 
 # Variants
 
+For some usage examples, refer to `examples.md`.
+
 ## General purpose
 
 Namespace: `global::StringWeaver`
@@ -22,26 +24,38 @@ Namespace: `global::StringWeaver`
   * The default `StringWeaver` should be the first choice for the ordinary consumer. Where profiling shows that a different implementation would be more beneficial, consider the alternatives described below.
 * `UnsafeStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from unmanaged instead of managed memory. This has the benefit of not causing any GC pressure while exposing exactly the same APIs as the default `StringWeaver`.
   * Consider using this if you frequently create `StringWeaver`s with capacities near `int.MaxValue` or instances which are very long-lived.
-  * (!) `UnsafeStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `UnsafeStringWeaver` is a memory leak.
+  * &#x26A0; `UnsafeStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `UnsafeStringWeaver` is a memory leak.
 
 ## Specialized
 
+Namespace: `global::StringWeaver.Specialized`
+
 * `PooledStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from `ArrayPool<char>.Shared` (or your own passed implementation of `ArrayPool<char>`). This allows keeping GC pressure low while still using managed memory.
   * Consider using this if you frequently create and dispose of `StringWeaver`s with moderate capacities (e.g. a few dozen kB or more).
-  * (!) `PooledStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `PooledStringWeaver` causes the buffer backing it to be lost to the pool, which is a memory leak and degrades performance of every other user of that `ArrayPool<char>` in your application.
+  * &#x26A0; `PooledStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `PooledStringWeaver` causes the buffer backing it to be lost to the pool, which is a memory leak and degrades performance of every other user of that `ArrayPool<char>` in your application.
 
 # Inheritance
 
 `StringWeaver` itself is not `sealed` because `UnsafeStringWeaver` inherits from it. As such, inheritance from `StringWeaver` is allowed for external types as well. There are only a select few members you must override to make your implementation function correctly, everything else (functionality-wise) is handled for you (and not virtual, for that matter):
 
 * `Memory<char> FullMemory`: Gets a `Memory<char>` instance over the entire backing storage (NOT just the used portion).
-* `void Grow(int requiredCapacity)`: WITHOUT checking whether it is required, expands the backing storage to at least the specified capacity (those checks are done for you before this `virtual` method is ever called). It is recommended you decorate your `override` with `[MethodImpl(MethodImplOptions.NoInlining)]`.
-* (!) `StringWeaver.ToString` (the base version) is `sealed override`.
-* `IBufferWriter<char>` implementations and `Stream` support are both handled internally as well. Do not re-implement either of those.
+* `void GrowCore(int requiredCapacity)`: WITHOUT checking whether it is required, expands the backing storage to at least the specified capacity (those checks are done for you before this `virtual` method is ever called).
+* &#x26A0; `StringWeaver.ToString` (the base version) is `sealed override`.
+* `IBufferWriter<char>` implementations as well as `Stream` and `TextWriter` support through wrappers are both handled internally as well. Do not re-implement any of those.
 
 Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
 
-(!) The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
+&#x26A0; The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
+
+## &#x26A0; v2.0.0+ Breaking Changes
+
+v2.0.0 saw the introduction of breaking changes to further reduce allocations for specific scenarios. If you aren't deriving from `StringWeaver`, you will very likely not be affected by most of these changes.
+
+* `protected int Start { get; set; }` and `protected int End { get; set; }`: These properties delimit the used portion of the buffer. This allows derived types to implement functionality that would otherwise require shifting data around in the backing storage. It is discouraged for custom derived types to modify this directly. The methods `StringWeaver` exposes are well-behaved with respect to this property, if its value is sane at call time.
+* `public int Length { get; }`: This property no longer has a setter. It is now a computed property using the new property `StringWeaver.End`.
+* `protected internal virtual Memory<char> FullMemory { get; }`: There has been no API change for this property, but the details of exactly what it is expected to return very much has. It must encompass the entirety of the backing memory of the current instance, regardless of the values of `StringWeaver.Start` and `StringWeaver.End`. Before this, this expecation wasn't very explicit; trimming or similar operations kept the used portion of the backing memory aligned to index `0` in the `Memory<char>` returned by this property. This is no longer the case to reduce allocations where possible; however, the above change was made to facilitate this.
+* `protected void EnsureZeroAligned()`: Aligns the used portion to index `0` in the backing storage for you using `StringWeaver.Start` and `StringWeaver.End`.
+* `protected virtual void GrowCore(int requiredCapacity)`: Instead of `protected virtual void Grow(int requiredCapacity)`, you now override `GrowCore`. Because increasing `StringWeaver.Start` values effectively reduce the available capacity, a new branch was added that attempts to satisfy the capacity requirement without actually needing to allocate using `EnsureZeroAligned`.
 
 # Global configuration
 
@@ -49,7 +63,7 @@ The `static class StringWeaverConfiguration` exposes global configuration option
 
 # Contribution
 
-Opening issues and submitting PRs are welcome. All changes must be appropriately covered by tests. Tests run exclusively under `net9.0`.
+Opening issues and submitting PRs are welcome. All changes must be appropriately covered by tests. Tests run exclusively under `net10.0`.
 
 Support for `netstandard2.0` must always be maintained. If possible, new functionality should be added to all target frameworks. New dependencies may be introduced after I vet the decision to do so.
 

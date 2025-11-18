@@ -5,8 +5,12 @@ internal static class Pow2
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int NextPowerOf2(int n)
     {
-        n--;
+        if (n == 1)
+        {
+            return 2;
+        }
 
+        n--;
         // Next would be 2^31 = negative
         if (n >= 0x40000000)
         {
@@ -23,8 +27,12 @@ internal static class Pow2
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long NextPowerOf2(long n)
     {
-        n--;
+        if (n == 1)
+        {
+            return 2;
+        }
 
+        n--;
         // Next would be 2^63 = negative
         if (n >= 0x4000_0000_0000_0000)
         {
