@@ -14,26 +14,39 @@
 /// This type is not intended to be used directly from client code.
 /// </remarks>
 [InterpolatedStringHandler]
-public struct StringWeaverFormatHandler(int literalLength, int formattedCount, StringWeaver weaver, IFormatProvider formatProvider = null)
+public readonly struct StringWeaverFormatHandler
 {
+    private readonly StringWeaver _weaver;
+    private readonly IFormatProvider _formatProvider;
+
+    /// <summary>
+    /// Unconditionally throws an <see cref="InvalidOperationException"/>. This constructor is not intended to be used directly.
+    /// </summary>
+    public StringWeaverFormatHandler() => throw new InvalidOperationException("This type should not be used without proper initialization. For parameters of this type, simply pass an interpolated string literal.");
+    internal StringWeaverFormatHandler(int literalLength, int formattedCount, StringWeaver weaver, IFormatProvider formatProvider = null)
+    {
+        _weaver = weaver;
+        _formatProvider = formatProvider;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AppendLiteral(string str) => weaver.Append(str);
+    public readonly void AppendLiteral(string str) => _weaver.Append(str);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AppendFormatted(scoped ReadOnlySpan<char> value) => weaver.Append(value);
+    public readonly void AppendFormatted(scoped ReadOnlySpan<char> value) => _weaver.Append(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AppendFormatted<T>(T value) => AppendFormatted(value, null);
-    public void AppendFormatted<T>(T value, string format)
+    public readonly void AppendFormatted<T>(T value) => AppendFormatted(value, null);
+    public readonly void AppendFormatted<T>(T value, string format)
     {
         switch (value)
         {
             case ISpanFormattable spanFormattable:
-                weaver.Append(spanFormattable, format, formatProvider);
+                _weaver.Append(spanFormattable, format, _formatProvider);
                 break;
             case IFormattable formattable:
-                weaver.Append(formattable.ToString(format, formatProvider));
+                _weaver.Append(formattable.ToString(format, _formatProvider));
                 break;
             default:
-                weaver.Append(value?.ToString());
+                _weaver.Append(value?.ToString());
                 break;
         }
     }

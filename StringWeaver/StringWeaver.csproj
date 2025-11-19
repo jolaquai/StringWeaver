@@ -27,7 +27,7 @@
       <PackageProjectUrl>https://github.com/jolaquai/StringWeaver</PackageProjectUrl>
       <RepositoryUrl>https://github.com/jolaquai/StringWeaver</RepositoryUrl>
       <RepositoryType>git</RepositoryType>
-      <PackageTags>string;stringbuilder;performance;buffer</PackageTags>
+      <PackageTags>string;stringbuilder;performance;buffer;mutable string</PackageTags>
       <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
       <PackageReadmeFile>readme.md</PackageReadmeFile>
 

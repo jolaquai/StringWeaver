@@ -1,4 +1,5 @@
-﻿using System.Security.Principal;
+﻿using System.IO;
+using System.Security.Principal;
 
 using PCRE;
 
@@ -137,6 +138,9 @@ public partial class StringWeaver : IBufferWriter<char>
     #endregion
 
     #region const
+    private static readonly char[] _platformNewLine = Environment.NewLine.ToCharArray();
+    private static readonly int _platformNewLineLength = _platformNewLine.Length;
+
     /// <summary>
     /// The maximum capacity of a single <see cref="StringWeaver"/>.
     /// </summary>
@@ -335,6 +339,12 @@ public partial class StringWeaver : IBufferWriter<char>
 
     #region Basic Appends
     /// <summary>
+    /// Appends the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine() => Append(_platformNewLine);
+
+    /// <summary>
     /// Appends a single <see cref="char"/> to the end of the buffer.
     /// </summary>
     /// <param name="value">The <see cref="char"/> to append.</param>
@@ -344,6 +354,17 @@ public partial class StringWeaver : IBufferWriter<char>
         Version++;
         UsableSpan[End++] = value;
     }
+    /// <summary>
+    /// Appends a single <see cref="char"/> followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="char"/> to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(char value)
+    {
+        Append(value);
+        AppendLine();
+    }
+
     /// <summary>
     /// Appends a <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to the end of the buffer.
     /// </summary>
@@ -358,11 +379,83 @@ public partial class StringWeaver : IBufferWriter<char>
         Expand(value.Length);
     }
     /// <summary>
+    /// Appends a <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to append.</param>
+    public void AppendLine(scoped ReadOnlySpan<char> value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+        var destination = GetWritableSpan(value.Length + _platformNewLineLength);
+        value.CopyTo(destination);
+        _platformNewLine.CopyTo(destination[value.Length..]);
+        Expand(value.Length + _platformNewLineLength);
+    }
+    /// <summary>
     /// Appends a <see cref="string"/> to the end of the buffer.
     /// </summary>
     /// <param name="value">The <see cref="string"/> to append.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Append(string value) => Append(value.AsSpan());
+    /// <summary>
+    /// Appends a <see cref="string"/> followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="string"/> to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(string value) => AppendLine(value.AsSpan());
+
+    /// <summary>
+    /// Appends an <see langword="object"/>'s <see langword="string"/> representation to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="string"/> to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Append(object value) => Append(value.ToString().AsSpan());
+    /// <summary>
+    /// Appends an <see langword="object"/>'s <see langword="string"/> representation followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="string"/> to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(object value) => AppendLine(value.ToString().AsSpan());
+
+#if !NETSTANDARD2_0
+#pragma warning disable CA1822 // Mark members as static
+#pragma warning disable IDE0060 // Remove unused parameter
+    /// <summary>
+    /// Appends an interpolated <see langword="string"/> literal to the end of the buffer.
+    /// </summary>
+    /// <param name="stringWeaverFormatHandler">The handler used to format the <see langword="string"/>. You should not be specifying this manually; pass an interpolated <see langword="string"/> literal for this parameter instead.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Append([InterpolatedStringHandlerArgument("")] ref StringWeaverFormatHandler stringWeaverFormatHandler)
+    {
+    }
+    /// <summary>
+    /// Appends an interpolated <see langword="string"/> literal to the end of the buffer where the arguments are formatted using the specified <see cref="IFormatProvider"/>.
+    /// </summary>
+    /// <param name="formatProvider">The <see cref="IFormatProvider"/> used to format the arguments.</param>
+    /// <param name="stringWeaverFormatHandler">The handler used to format the <see langword="string"/>. You should not be specifying this manually; pass an interpolated <see langword="string"/> literal for this parameter instead.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Append(IFormatProvider formatProvider, [InterpolatedStringHandlerArgument("", nameof(formatProvider))] ref StringWeaverFormatHandler stringWeaverFormatHandler)
+    {
+    }
+    /// <summary>
+    /// Appends an interpolated <see langword="string"/> literal followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="stringWeaverFormatHandler">The handler used to format the <see langword="string"/>. You should not be specifying this manually; pass an interpolated <see langword="string"/> literal for this parameter instead.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine([InterpolatedStringHandlerArgument("")] ref StringWeaverFormatHandler stringWeaverFormatHandler) => AppendLine();
+    /// <summary>
+    /// Appends an interpolated <see langword="string"/> literal followed by the current environment's default line terminator to the end of the buffer where the arguments are formatted using the specified <see cref="IFormatProvider"/>.
+    /// </summary>
+    /// <param name="formatProvider">The <see cref="IFormatProvider"/> used to format the arguments.</param>
+    /// <param name="stringWeaverFormatHandler">The handler used to format the <see langword="string"/>. You should not be specifying this manually; pass an interpolated <see langword="string"/> literal for this parameter instead.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(IFormatProvider formatProvider, [InterpolatedStringHandlerArgument("", nameof(formatProvider))] ref StringWeaverFormatHandler stringWeaverFormatHandler) => AppendLine();
+#pragma warning restore IDE0060 // Remove unused parameter
+#pragma warning restore CA1822 // Mark members as static
+#endif
+
     /// <summary>
     /// Appends a section of a <see langword="char"/> array to the end of the buffer.
     /// </summary>
@@ -387,6 +480,18 @@ public partial class StringWeaver : IBufferWriter<char>
         Append(span);
     }
     /// <summary>
+    /// Appends a section of a <see langword="char"/> array followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="chars">The <see langword="char"/> array containing the block to append.</param>
+    /// <param name="index">The starting index in the <see langword="char"/> array.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(char[] chars, int index, int length)
+    {
+        Append(chars, index, length);
+        AppendLine();
+    }
+    /// <summary>
     /// Appends a block of <see langword="char"/>s beginning at the specified managed charPtr to the end of the buffer.
     /// </summary>
     /// <param name="charPtr">The managed charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
@@ -402,7 +507,18 @@ public partial class StringWeaver : IBufferWriter<char>
         Append((char*)Unsafe.AsPointer(ref Unsafe.AsRef(in charPtr)), length);
     }
     /// <summary>
-    /// Appends a block of <see langword="char"/>s beginning at the specified unmanaged charPtr to the end of the buffer.
+    /// Appends a block of <see langword="char"/>s beginning at the specified managed pointer to <see langword="char"/> followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="charPtr">The managed charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void AppendLine(scoped ref readonly char charPtr, int length)
+    {
+        Append(in charPtr, length);
+        AppendLine();
+    }
+    /// <summary>
+    /// Appends a block of <see langword="char"/>s beginning at the specified unmanaged pointer to <see langword="char"/> to the end of the buffer.
     /// </summary>
     /// <param name="charPtr">The unmanaged charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
     /// <param name="length">The number of <see langword="char"/>s to append.</param>
@@ -419,6 +535,17 @@ public partial class StringWeaver : IBufferWriter<char>
 
         scoped var span = new ReadOnlySpan<char>(charPtr, length);
         Append(span);
+    }
+    /// <summary>
+    /// Appends a block of <see langword="char"/>s beginning at the specified unmanaged pointer to <see langword="char"/> to the end of the buffer.
+    /// </summary>
+    /// <param name="charPtr">The unmanaged charPtr to the beginning of the block of <see langword="char"/>s to append.</param>
+    /// <param name="length">The number of <see langword="char"/>s to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe void AppendLine(char* charPtr, int length)
+    {
+        Append(charPtr, length);
+        AppendLine();
     }
 
 #if NET6_0_OR_GREATER
@@ -457,6 +584,19 @@ public partial class StringWeaver : IBufferWriter<char>
 
             return false;
         }
+    }
+    /// <summary>
+    /// Appends an <see cref="ISpanFormattable"/> followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="spanFormattable">The <see cref="ISpanFormattable"/> to append.</param>
+    /// <param name="format">The format string to use when formatting the <see cref="ISpanFormattable"/>. If not provided, the default format is used.</param>
+    /// <param name="formatProvider">An <see cref="IFormatProvider"/> to use for formatting. If not provided, the current culture is used.</param>
+    /// <exception cref="InvalidOperationException"></exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(ISpanFormattable spanFormattable, ReadOnlySpan<char> format = default, IFormatProvider formatProvider = null)
+    {
+        Append(spanFormattable, format, formatProvider);
+        AppendLine();
     }
 #endif
     #endregion
@@ -2501,7 +2641,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             GrowIfNeeded(End + minimumSize);
         }
-        return UsableMemory.Slice(End, FreeCapacity);
+        return UsableMemory[End..];
     }
     /// <summary>
     /// Gets a <see cref="Span{T}"/> that can be used to write further content to the buffer.
@@ -2776,7 +2916,7 @@ public partial class StringWeaver : IBufferWriter<char>
     #region ToString
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer.
-    /// If a <see cref="ReadOnlySpan{T}"/> would suffice, use <see cref="Span"/> instead.
+    /// If allocating a <see langword="string"/> isn't necessary, use <see cref="Span"/> or <see cref="Memory"/> instead.
     /// </summary>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
     public sealed override string ToString() => Span.ToString();

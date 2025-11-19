@@ -39,9 +39,9 @@ Namespace: `global::StringWeaver.Specialized`
 `StringWeaver` itself is not `sealed` because `UnsafeStringWeaver` inherits from it. As such, inheritance from `StringWeaver` is allowed for external types as well. There are only a select few members you must override to make your implementation function correctly, everything else (functionality-wise) is handled for you (and not virtual, for that matter):
 
 * `Memory<char> FullMemory`: Gets a `Memory<char>` instance over the entire backing storage (NOT just the used portion).
-* `void Grow(int requiredCapacity)`: WITHOUT checking whether it is required, expands the backing storage to at least the specified capacity (those checks are done for you before this `virtual` method is ever called). It is recommended you decorate your `override` with `[MethodImpl(MethodImplOptions.NoInlining)]`.
+* `void GrowCore(int requiredCapacity)`: WITHOUT checking whether it is required, expands the backing storage to at least the specified capacity (those checks are done for you before this `virtual` method is ever called).
 * &#x26A0; `StringWeaver.ToString` (the base version) is `sealed override`.
-* `IBufferWriter<char>` implementations and `Stream` support are both handled internally as well. Do not re-implement either of those.
+* `IBufferWriter<char>` implementations as well as `Stream` and `TextWriter` support through wrappers are both handled internally as well. Do not re-implement any of those.
 
 Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
 
@@ -49,7 +49,7 @@ Adding functionality on top of anything already handled for you is straightforwa
 
 ## &#x26A0; v2.0.0+ Breaking Changes
 
-v2.0.0 saw the introduction of breaking changes to further reduce allocations for specific scenarios. The implementation remains stable if these changes are adopted.
+v2.0.0 saw the introduction of breaking changes to further reduce allocations for specific scenarios. If you aren't deriving from `StringWeaver`, you will very likely not be affected by most of these changes.
 
 * `protected int Start { get; set; }` and `protected int End { get; set; }`: These properties delimit the used portion of the buffer. This allows derived types to implement functionality that would otherwise require shifting data around in the backing storage. It is discouraged for custom derived types to modify this directly. The methods `StringWeaver` exposes are well-behaved with respect to this property, if its value is sane at call time.
 * `public int Length { get; }`: This property no longer has a setter. It is now a computed property using the new property `StringWeaver.End`.
