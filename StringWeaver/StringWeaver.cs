@@ -1788,7 +1788,13 @@ public partial class StringWeaver : IBufferWriter<char>
         End += totalLengthChange;
     }
 
-    private void ValidateRange(int start, int length)
+    /// <summary>
+    /// Validates that <paramref name="start"/> and <paramref name="length"/> delimit a range entirely within the used portion of the buffer.
+    /// </summary>
+    /// <param name="start">The start index of the range.</param>
+    /// <param name="length">The length of the range.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="start"/> and <paramref name="length"/> do not delimit a range entirely within the used portion of the buffer.</exception>
+    protected void ValidateRange(int start, int length)
     {
         if (start < 0 || start > Length)
         {
@@ -2757,7 +2763,7 @@ public partial class StringWeaver : IBufferWriter<char>
     public void Remove(char value, Range range)
     {
         var (idx, len) = range.GetOffsetAndLength(End);
-        Replace([value], default, idx, len);
+        ReplaceAll([value], default, idx, len);
     }
     /// <summary>
     /// Removes all occurrences of the specified <see langword="char"/> value in the specified range from the used portion of the buffer.
@@ -2766,7 +2772,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="index">The starting index of the range to remove.</param>
     /// <param name="length">The number of characters to remove from the buffer.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Remove(char value, int index, int length) => Replace([value], default, index, length);
+    public void Remove(char value, int index, int length) => ReplaceAll([value], default, index, length);
     #endregion
 
     #region Trim
@@ -3069,12 +3075,18 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="wipe">Whether to wipe the contents of the buffer and set all characters to <c>\0</c>.</param>
     public void Clear(bool wipe)
     {
-        Start = End = 0;
+        ClearCore();
         if (wipe)
         {
             UsableSpan.Clear();
         }
     }
+    /// <summary>
+    /// Resets the length of the used portion of the buffer to its initial state.
+    /// Derived types may override this method when this is not simply setting <see cref="Start"/> and <see cref="End"/> to <c>0</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected virtual void ClearCore() => Start = End = 0;
     #endregion
 
     #region Copy
@@ -3157,7 +3169,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             throw new ArgumentOutOfRangeException(nameof(destinationIndex), $"Index ({destinationIndex}) must be within the bounds of the destination array.");
         }
-        CopyBlock(index, length, destination);
+        CopyBlock(index, length, destination.AsSpan(destinationIndex));
     }
 
     /// <summary>

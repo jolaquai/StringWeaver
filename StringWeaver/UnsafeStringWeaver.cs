@@ -1,9 +1,9 @@
 ﻿namespace StringWeaver;
 
 /// <summary>
-/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
+/// Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
 /// </summary>
-internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
+public sealed class UnsafeStringWeaver : StringWeaver, IDisposable
 {
     #region const
     /// <summary>
@@ -111,7 +111,9 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     protected override void GrowCore(int requiredCapacity) => _buffer.Grow(requiredCapacity, Start);
 
     #region Cleanup
+    /// <inheritdoc/>
     ~UnsafeStringWeaver() => Dispose();
+    /// <inheritdoc/>
     public void Dispose()
     {
         ((IDisposable)_buffer)?.Dispose();

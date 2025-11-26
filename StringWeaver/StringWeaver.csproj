@@ -13,7 +13,7 @@
     <AnalysisMode>recommended</AnalysisMode>
     <AnalysisModePerformance>all</AnalysisModePerformance>
 
-    <NoWarn>$(NoWarn);CA1510;CA1513</NoWarn>
+    <NoWarn>$(NoWarn);CA1510;CA1513;CA1720</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>

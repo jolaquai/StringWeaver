@@ -55,7 +55,9 @@ v2.0.0 saw the introduction of breaking changes to further reduce allocations fo
 * `public int Length { get; }`: This property no longer has a setter. It is now a computed property using the new property `StringWeaver.End`.
 * `protected internal virtual Memory<char> FullMemory { get; }`: There has been no API change for this property, but the details of exactly what it is expected to return very much has. It must encompass the entirety of the backing memory of the current instance, regardless of the values of `StringWeaver.Start` and `StringWeaver.End`. Before this, this expecation wasn't very explicit; trimming or similar operations kept the used portion of the backing memory aligned to index `0` in the `Memory<char>` returned by this property. This is no longer the case to reduce allocations where possible; however, the above change was made to facilitate this.
 * `protected void EnsureZeroAligned()`: Aligns the used portion to index `0` in the backing storage for you using `StringWeaver.Start` and `StringWeaver.End`.
+* `protected void ValidateRange(int index, int length)`: Validates a range against the used portion of the buffer, throwing an `ArgumentOutOfRangeException` for you if it is not entirely within bounds.
 * `protected virtual void GrowCore(int requiredCapacity)`: Instead of `protected virtual void Grow(int requiredCapacity)`, you now override `GrowCore`. Because increasing `StringWeaver.Start` values effectively reduce the available capacity, a new branch was added that attempts to satisfy the capacity requirement without actually needing to allocate using `EnsureZeroAligned`.
+* `protected virtual void ClearCore()`: Introduced to support derived `StringWeaver` types that need to do additional cleanup when `Clear` is called or where clearing is not just setting `StringWeaver.Start` and `StringWeaver.End` to `0`.
 
 # Global configuration
 
