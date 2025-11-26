@@ -1,4 +1,11 @@
-`StringWeaver` is designed to be as close to a drop-in replacement for any place where your first instict would be use a `StringBuilder` _and_ expand primarily on in-place replacement capabilities:
+`StringWeaver` is designed to be as close to a drop-in replacement as possible for any situation where your first instict would be to use a `StringBuilder`.
+
+Some feature highlights include:
+* Highly efficient memory usage through the use of slicing instead of memory copies where possible.
+* A significantly expanded set of methods for in-place replacement, often with zero additional allocations.
+* Extensive API support through custom-built `TextWriter`, `Stream` and `IBufferWriter<char>` implementations.
+
+Consider the `Replace` set of methods in `StringBuilder`:
 ```csharp
 class StringBuilder
 {
