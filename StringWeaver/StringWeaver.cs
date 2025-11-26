@@ -1,4 +1,6 @@
-﻿using PCRE;
+﻿using System.Diagnostics.CodeAnalysis;
+
+using PCRE;
 
 namespace StringWeaver;
 
@@ -25,6 +27,189 @@ public partial class StringWeaver : IBufferWriter<char>
 {
     #region Enumerator ref structs
     /// <summary>
+    /// Used by <see cref="StringWeaver"/> to allow enumeration of indices of regex matches in the buffer.
+    /// During the enumeration, modification of the underlying <see cref="StringWeaver"/> is considered undefined behavior.
+    /// </summary>
+    public ref struct UnsafeRegexMatchIndexEnumerator
+    {
+        private readonly StringWeaver _weaver;
+        private readonly PcreRegex _pcreRegex;
+        private readonly int _searchEnd;
+        private int nextSearchIndex;
+
+        internal UnsafeRegexMatchIndexEnumerator(StringWeaver weaver, PcreRegex regex, int start, int length)
+        {
+            _weaver = weaver;
+            _pcreRegex = regex;
+            nextSearchIndex = start;
+
+            _searchEnd = length == -1 ? _weaver.End : start + length;
+        }
+
+#if NET7_0_OR_GREATER
+        private readonly Regex _regex;
+        internal UnsafeRegexMatchIndexEnumerator(StringWeaver weaver, Regex regex, int start, int length)
+        {
+            _weaver = weaver;
+            _regex = regex;
+            nextSearchIndex = start;
+
+            _searchEnd = length == -1 ? _weaver.End : start + length;
+        }
+#endif
+
+        /// <summary>
+        /// Advances the enumerator to the next occurrence of the specified regex in the <see cref="StringWeaver"/>.
+        /// </summary>
+        /// <returns><see langword="true"/> if advancement was successful; otherwise, <see langword="false"/>.</returns>
+        public bool MoveNext()
+        {
+            if (nextSearchIndex >= _searchEnd)
+            {
+                return false;
+            }
+
+#if NET7_0_OR_GREATER
+            if (_regex is not null)
+            {
+                if (_pcreRegex is not null)
+                {
+                    throw new InvalidOperationException("Both regex implementations cannot be set at the same time. This shouldn't even be possible.");
+                }
+
+                foreach (var vm in _regex.EnumerateMatches(_weaver.Span, nextSearchIndex))
+                {
+                    Current = vm.Index;
+                    nextSearchIndex = vm.Index + vm.Length;
+                    return true;
+                }
+            }
+            else
+#endif
+            {
+                var vm = _pcreRegex.Match(_weaver.Span, nextSearchIndex);
+                if (vm.Success && vm.Index + vm.Length <= _searchEnd)
+                {
+                    Current = vm.Index;
+                    nextSearchIndex = vm.Index + vm.Length;
+                    return true;
+                }
+            }
+            Current = -1;
+            nextSearchIndex = _searchEnd;
+            return false;
+        }
+        /// <summary>
+        /// Gets the current index of the specified value in the buffer.
+        /// </summary>
+        public int Current { get; private set; } = -1;
+        /// <summary>
+        /// Returns the enumerator itself.
+        /// </summary>
+        /// <returns>The enumerator itself.</returns>
+        public readonly UnsafeRegexMatchIndexEnumerator GetEnumerator() => this;
+    }
+    /// <summary>
+    /// Used by <see cref="StringWeaver"/> to allow enumeration of indices of matches of regexes in the buffer.
+    /// </summary>
+    public ref struct RegexMatchIndexEnumerator
+    {
+        private readonly ulong _version;
+        private readonly StringWeaver _weaver;
+        private readonly PcreRegex _pcreRegex;
+        private readonly int _searchEnd;
+        private int nextSearchIndex;
+
+        internal RegexMatchIndexEnumerator(StringWeaver weaver, PcreRegex regex, int start, int length)
+        {
+            _weaver = weaver;
+            _pcreRegex = regex;
+            Current = -1;
+            nextSearchIndex = start;
+            _version = weaver.Version;
+
+            _searchEnd = length == -1 ? weaver.End : start + length;
+        }
+
+#if NET7_0_OR_GREATER
+        private readonly Regex _regex;
+        internal RegexMatchIndexEnumerator(StringWeaver weaver, Regex regex, int start, int length)
+        {
+            _weaver = weaver;
+            _regex = regex;
+            nextSearchIndex = start;
+            _version = weaver.Version;
+
+            _searchEnd = length == -1 ? _weaver.End : start + length;
+        }
+#endif
+
+        /// <summary>
+        /// Advances the enumerator to the next index of the specified value in the <see cref="StringWeaver"/>.
+        /// </summary>
+        /// <returns>><see langword="true"/> if advancement was successful; otherwise, <see langword="false"/>.</returns>
+        /// <exception cref="InvalidOperationException">Thrown when the underlying <see cref="StringWeaver"/> was modified during enumeration.</exception>
+        public bool MoveNext()
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            static void ThrowModifiedException(
+#if !NETSTANDARD2_0
+            [DoesNotReturnIf(true)]
+#endif
+            bool condition) => throw new InvalidOperationException("The buffer was modified; enumeration may not continue.");
+
+            if (nextSearchIndex >= _searchEnd)
+            {
+                return false;
+            }
+
+#if NET7_0_OR_GREATER
+            if (_regex is not null)
+            {
+                if (_pcreRegex is not null)
+                {
+                    throw new InvalidOperationException("Both regex implementations cannot be set at the same time. This shouldn't even be possible.");
+                }
+
+                ThrowModifiedException(_version != _weaver.Version);
+                foreach (var vm in _regex.EnumerateMatches(_weaver.Span, nextSearchIndex))
+                {
+                    if (vm.Index + vm.Length <= _searchEnd)
+                    {
+                        Current = vm.Index;
+                        nextSearchIndex = vm.Index + vm.Length;
+                        return true;
+                    }
+                    break;
+                }
+            }
+            else
+#endif
+            {
+                ThrowModifiedException(_version != _weaver.Version);
+                var vm = _pcreRegex.Match(_weaver.Span, nextSearchIndex);
+                if (vm.Success && vm.Index + vm.Length <= _searchEnd)
+                {
+                    Current = vm.Index;
+                    nextSearchIndex = vm.Index + vm.Length;
+                    return true;
+                }
+            }
+            Current = -1;
+            nextSearchIndex = _searchEnd;
+            return false;
+        }
+        /// <summary>
+        /// Gets the current index of the specified value in the buffer.
+        /// </summary>
+        public int Current { get; private set; }
+        /// <summary>
+        /// Returns the enumerator itself.
+        /// </summary>
+        /// <returns>The enumerator itself.</returns>
+        public readonly RegexMatchIndexEnumerator GetEnumerator() => this;
+    }
+    /// <summary>
     /// Used by <see cref="StringWeaver"/> to allow enumeration of indices of a specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in the buffer, starting from a specified index.
     /// During the enumeration, modification of the underlying <see cref="StringWeaver"/> is considered undefined behavior.
     /// </summary>
@@ -50,7 +235,7 @@ public partial class StringWeaver : IBufferWriter<char>
         /// <returns><see langword="true"/> if advancement was successful; otherwise, <see langword="false"/>.</returns>
         public bool MoveNext()
         {
-            if (nextSearchIndex >= _searchEnd)
+            if (nextSearchIndex >= _searchEnd || nextSearchIndex + _value.Length > _searchEnd)
             {
                 return false;
             }
@@ -59,7 +244,7 @@ public partial class StringWeaver : IBufferWriter<char>
             if (index != -1)
             {
                 Current = index;
-                nextSearchIndex = index + 1;
+                nextSearchIndex = index + _value.Length;
                 return true;
             }
             return false;
@@ -103,7 +288,7 @@ public partial class StringWeaver : IBufferWriter<char>
         /// <exception cref="InvalidOperationException">Thrown when the underlying <see cref="StringWeaver"/> was modified during enumeration.</exception>
         public bool MoveNext()
         {
-            if (nextSearchIndex >= _searchEnd)
+            if (nextSearchIndex >= _searchEnd || nextSearchIndex + _value.Length > _searchEnd)
             {
                 return false;
             }
@@ -117,7 +302,7 @@ public partial class StringWeaver : IBufferWriter<char>
                 }
 
                 Current = index;
-                nextSearchIndex = index + 1;
+                nextSearchIndex = index + _value.Length;
                 return true;
             }
             return false;
@@ -146,7 +331,8 @@ public partial class StringWeaver : IBufferWriter<char>
     /// The default capacity of a new <see cref="StringWeaver"/> instance if none is specified during construction.
     /// </summary>
     public const int DefaultCapacity = 256;
-    private const int SafeCharStackalloc = 256;
+    private const int SafeInt32Stackalloc = 256;
+    private const int SafeCharStackalloc = 512;
     #endregion
 
     #region Instance fields
@@ -705,7 +891,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Enumerates all indices of a specified <see langword="char"/> in the buffer.
     /// </summary>
     /// <param name="value">The <see langword="char"/> to find.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(char, int, int)"/> if you own and solely control the buffer.
@@ -724,7 +910,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(char, int, int)"/> if you own and solely control the buffer.
@@ -737,7 +923,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
     /// <param name="length">The number of characters to consider from the starting index.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(char, int, int)"/> if you own and solely control the buffer.
@@ -768,7 +954,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Enumerates all indices of a specified <see langword="char"/> in the buffer.
     /// </summary>
     /// <param name="value">The <see langword="char"/> to find.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -792,7 +978,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -804,7 +990,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
     /// <param name="length">The number of characters to consider from the starting index.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -1214,7 +1400,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Enumerates all indices of a specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in the buffer.
     /// </summary>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
@@ -1226,7 +1412,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
@@ -1239,7 +1425,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
     /// <param name="length">The number of characters to consider from the starting index.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
     /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
@@ -1254,7 +1440,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Enumerates all indices of a specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in the buffer.
     /// </summary>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -1266,7 +1452,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -1278,7 +1464,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> to find.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
     /// <param name="length">The number of characters to consider from the starting index.</param>
-    /// <returns>An <see cref="IEnumerable{T}"/> of indices where <paramref name="value"/> occurs in the buffer.</returns>
+    /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
     /// Conversely, each enumerator advancement becomes slightly more expensive.
@@ -1288,6 +1474,166 @@ public partial class StringWeaver : IBufferWriter<char>
         ValidateRange(index, length);
         return new IndexEnumerator(this, value, index, length);
     }
+
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(PcreRegex regex) => new UnsafeRegexMatchIndexEnumerator(this, regex, 0, Length);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer, starting from the specified <paramref name="index"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(PcreRegex regex, int index) => EnumerateIndicesOfUnsafe(regex, index, Length - index);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer in a range delimited by the specified <paramref name="index"/> and <paramref name="length"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <param name="length">The number of characters to consider from the starting index.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(PcreRegex regex, int index, int length)
+    {
+        ValidateRange(index, length);
+        return new UnsafeRegexMatchIndexEnumerator(this, regex, index, length);
+    }
+
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex) => new RegexMatchIndexEnumerator(this, regex, 0, Length);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer, starting from the specified <paramref name="index"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex, int index) => EnumerateIndicesOf(regex, index, Length - index);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="PcreRegex"/> in the buffer in a range delimited by the specified <paramref name="index"/> and <paramref name="length"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="PcreRegex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <param name="length">The number of characters to consider from the starting index.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex, int index, int length)
+    {
+        ValidateRange(index, length);
+        return new RegexMatchIndexEnumerator(this, regex, index, length);
+    }
+
+#if NET7_0_OR_GREATER
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(Regex regex) => new UnsafeRegexMatchIndexEnumerator(this, regex, 0, Length);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer, starting from the specified <paramref name="index"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(Regex regex, int index) => EnumerateIndicesOfUnsafe(regex, index, Length - index);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer in a range delimited by the specified <paramref name="index"/> and <paramref name="length"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <param name="length">The number of characters to consider from the starting index.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is not stable; enumeration always operates on the current contents of the buffer, so changes to its contents do not affect or interrupt enumeration.
+    /// This is the cheaper alternative to <see cref="EnumerateIndicesOf(ReadOnlySpan{char}, int, int)"/> if you own and solely control the buffer.
+    /// </remarks>
+    public UnsafeRegexMatchIndexEnumerator EnumerateIndicesOfUnsafe(Regex regex, int index, int length)
+    {
+        ValidateRange(index, length);
+        return new UnsafeRegexMatchIndexEnumerator(this, regex, index, length);
+    }
+
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex) => new RegexMatchIndexEnumerator(this, regex, 0, Length);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer, starting from the specified <paramref name="index"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex, int index) => EnumerateIndicesOf(regex, index, Length - index);
+    /// <summary>
+    /// Enumerates all indices of matches of a specified <see cref="Regex"/> in the buffer in a range delimited by the specified <paramref name="index"/> and <paramref name="length"/>.
+    /// </summary>
+    /// <param name="regex">The <see cref="Regex"/> to find.</param>
+    /// <param name="index">At which index in the buffer to start searching.</param>
+    /// <param name="length">The number of characters to consider from the starting index.</param>
+    /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
+    /// <remarks>
+    /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
+    /// Conversely, each enumerator advancement becomes slightly more expensive.
+    /// </remarks>
+    public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex, int index, int length)
+    {
+        ValidateRange(index, length);
+        return new RegexMatchIndexEnumerator(this, regex, index, length);
+    }
+#endif
     #endregion
 
     /// <summary>
@@ -1301,8 +1647,13 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             if (index == 0)
             {
-                // Bump up Start to effectively remove from the start
+                // Bump up Start to remove from the start
                 Start += len;
+            }
+            else if (index + len == End)
+            {
+                // Move the End pointer back to remove from the end
+                End -= len;
             }
             else
             {
@@ -1321,6 +1672,14 @@ public partial class StringWeaver : IBufferWriter<char>
                 Start += offset;
 
                 to.CopyTo(Span);
+            }
+            else if (index + len == End)
+            {
+                // Move the End pointer back to remove from the end
+                End -= len - to.Length;
+
+                // Copy the new content to the index
+                to.CopyTo(Span[index..]);
             }
             else
             {
@@ -1347,7 +1706,7 @@ public partial class StringWeaver : IBufferWriter<char>
             // We need to grow the buffer
             GrowIfNeeded(End + (to.Length - len));
 
-            // Must copy BEFORE updating Length, working backwards to avoid overlap
+            // Must copy working backwards to avoid overlap
             var remaining = Span[(index + len)..];
             var newEnd = End + (to.Length - len);
 
@@ -1357,21 +1716,40 @@ public partial class StringWeaver : IBufferWriter<char>
             // Copy the new content to the index
             to.CopyTo(UsableSpan.Slice(index, to.Length));
 
-            // NOW update Length
+            // NOW update End
             End = newEnd;
         }
     }
     /// <summary>
     /// Implements core logic for replacement operations at multiple indices in the buffer with the same new content.
+    /// <paramref name="indices"/> must be mutable because this method will sort indices to optimize copying.
     /// </summary>
-    internal void ReplaceCore(ReadOnlySpan<int> indices, int len, ReadOnlySpan<char> to)
+    internal void ReplaceCore(Span<int> indices, int len, ReadOnlySpan<char> to)
     {
         Version++;
 
-        // I've decided not to special-case indices containing 0 here because among all the other copies, one more won't make much difference
-
         var lengthDiff = to.Length - len;
         var totalLengthChange = lengthDiff * indices.Length;
+        var finalLength = Length + totalLengthChange;
+
+        if (finalLength == 0)
+        {
+            Clear();
+            return;
+        }
+
+        if (indices.Length == 0)
+        {
+            return;
+        }
+        if (indices.Length == 1)
+        {
+            ReplaceCore(indices[0], len, to);
+            return;
+        }
+
+        // Binds to System.MemoryExtensions for !netstandard2.0, otherwise uses this lib's helper
+        indices.Sort();
 
         if (lengthDiff > 0)
         {
@@ -1598,28 +1976,35 @@ public partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        var pool = ArrayPool<int>.Shared;
-        var indices = pool.Rent(256);
-        try
+        var possibleMatches = (length - index) / from.Length;
+
+        if (possibleMatches < SafeInt32Stackalloc)
         {
+            Span<int> indices = stackalloc int[possibleMatches];
             var i = 0;
             foreach (var idx in EnumerateIndicesOfUnsafe(from, index, length))
             {
-                if (i >= indices.Length)
-                {
-                    var newIndices = pool.Rent(indices.Length << 1);
-                    indices.AsSpan(0, i).CopyTo(newIndices);
-                    pool.Return(indices);
-                    indices = newIndices;
-                }
                 indices[i++] = idx;
             }
-
-            ReplaceCore(indices.AsSpan(0, i), from.Length, to);
+            ReplaceCore(indices[..i], from.Length, to);
         }
-        finally
+        else
         {
-            pool.Return(indices);
+            var indices = ArrayPool<int>.Shared.Rent(possibleMatches);
+            try
+            {
+                var i = 0;
+                foreach (var idx in EnumerateIndicesOfUnsafe(from, index, length))
+                {
+                    indices[i++] = idx;
+                }
+
+                ReplaceCore(indices.AsSpan(0, i), from.Length, to);
+            }
+            finally
+            {
+                ArrayPool<int>.Shared.Return(indices);
+            }
         }
     }
 
@@ -1733,6 +2118,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             ReplaceCore(match.Index, match.Length, to);
             start = match.Index + to.Length; // Move past the current match
+            length += to.Length - match.Length; // Adjust "remaining" length by the change in size, the "end pointer" must stay the same
         }
     }
 
@@ -1863,6 +2249,7 @@ public partial class StringWeaver : IBufferWriter<char>
             }
             ReplaceCore(match.Index, match.Length, to);
             start = match.Index + to.Length; // Move past the current match
+            length += to.Length - match.Length;
         }
     }
 
@@ -1981,6 +2368,7 @@ public partial class StringWeaver : IBufferWriter<char>
             writeReplacementAction(buffer, Span[..length].Slice(match));
             ReplaceCore(match.Index, match.Length, buffer);
             start = match.Index + bufferSize; // Move past the current match
+            length += bufferSize - match.Length;
         }
     }
     #endregion
@@ -2071,7 +2459,9 @@ public partial class StringWeaver : IBufferWriter<char>
             if (to.Length != vm.Length)
             {
                 var newStart = vm.Index + to.Length;
+
                 // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
+                length += to.Length - vm.Length;
                 currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
             }
         }
@@ -2203,7 +2593,9 @@ public partial class StringWeaver : IBufferWriter<char>
             if (to.Length != vm.Length)
             {
                 var newStart = vm.Index + to.Length;
-                // If the replacement Length is different, we need a new enumerator and a new span every time
+
+                // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
+                length += to.Length - vm.Length;
                 currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
             }
         }
@@ -2328,7 +2720,9 @@ public partial class StringWeaver : IBufferWriter<char>
             if (bufferSize != vm.Length)
             {
                 var newStart = vm.Index + bufferSize;
-                // If the replacement Length is different, we need a new enumerator and a new span every time
+
+                // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
+                length += bufferSize - vm.Length;
                 currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
             }
         }
