@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace StringWeaver;
+﻿namespace StringWeaver;
 
 /// <summary>
 /// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
@@ -102,7 +100,6 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
         _buffer = new NativeBuffer<char>(other.Capacity);
         End = span.Length;
 
-        // More efficient than non-generic Array.Copy plus constrained to the occupied Length
         other.Span.CopyTo(Span);
     }
     #endregion

@@ -1,12 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.0.11123.170 d18.0
+VisualStudioVersion = 18.0.11123.170
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StringWeaver", "StringWeaver\StringWeaver.csproj", "{3032ABE0-1B04-4B15-AA9F-C5D8E668D7AF}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{089100B1-113F-4E66-888A-E83F3999EAFD}"
 	ProjectSection(SolutionItems) = preProject
+		global.json = global.json
 		StringWeaver\readme.md = StringWeaver\readme.md
 		unlicense.md = unlicense.md
 	EndProjectSection
