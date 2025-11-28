@@ -301,7 +301,6 @@ public class StringWeaverTests
         Assert.Equal(-1, sw.IndexOfAny("56".AsSpan(), 0, 4));
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void IndexOfAnyExcept_FindsFirstNonMatch()
     {
@@ -317,9 +316,7 @@ public class StringWeaverTests
         Assert.Equal(3, sw.IndexOfAnyExcept("a".AsSpan(), 0, 9));
         Assert.Equal(-1, sw.IndexOfAnyExcept("a".AsSpan(), 0, 2));
     }
-#endif
 
-#if NET8_0_OR_GREATER
     [Fact]
     public void IndexOfAnyInRange_FindsInRange()
     {
@@ -351,13 +348,17 @@ public class StringWeaverTests
         Assert.Equal(3, sw.IndexOfAnyExceptInRange('0', '9', 0, 6));
         Assert.Equal(-1, sw.IndexOfAnyExceptInRange('0', '9', 0, 2));
     }
-#endif
 
     [Fact]
     public void EnumerateIndicesOf_Char_EnumeratesCorrectly()
     {
         var sw = new SW("ababab");
-        var indices = sw.EnumerateIndicesOf('a');
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf('a'))
+        {
+            indices.Add(idx);
+        }
+
         Assert.Collection(indices,
             i => Assert.Equal(0, i),
             i => Assert.Equal(2, i),
@@ -453,7 +454,7 @@ public class StringWeaverTests
     {
         var sw = new SW("lllhellolll");
         sw.ReplaceAll('l', 'x', 3, 5);
-        Assert.Equal("lllhexxoxxx", sw.ToString());
+        Assert.Equal("lllhexxolll", sw.ToString());
     }
 
     [Fact]
@@ -480,12 +481,25 @@ public class StringWeaverTests
         Assert.Equal("pass pass pass", sw.ToString());
     }
 
-    [Fact]
-    public void ReplaceAll_Span_WithRange_ReplacesInRange()
+    [Theory]
+    [InlineData("test test", "test pass")]
+    [InlineData("test test test", "test pass test")]
+    public void ReplaceAll_Span_WithRange_ReplacesInRange(string seed, string expected)
     {
-        var sw = new SW("test test test");
-        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 0, 9);
-        Assert.Equal("pass pass test", sw.ToString());
+        var sw = new SW(seed);
+        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 5, 4);
+        Assert.Equal(expected, sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_LargePossibleMatchCount()
+    {
+        var sw = new SW();
+        sw.Append('b');
+        sw.Append('A', 260);
+        sw.Append('b');
+        sw.ReplaceAll("A", default, 2);
+        Assert.Equal("bAb", sw.ToString());
     }
 
     [Fact]
@@ -548,10 +562,9 @@ public class StringWeaverTests
     {
         var sw = new SW("1a2b3c4");
         sw.ReplaceAll(new PcreRegex(@"\d"), "X".AsSpan(), 2, 5);
-        Assert.Equal("1aXbXc4", sw.ToString());
+        Assert.Equal("1aXbXcX", sw.ToString());
     }
 
-#if NET7_0_OR_GREATER
     [Fact]
     public void Replace_SystemRegex_Works()
     {
@@ -567,7 +580,6 @@ public class StringWeaverTests
         sw.ReplaceAll(new Regex(@"\d"), "X".AsSpan());
         Assert.Equal("aXbXcX", sw.ToString());
     }
-#endif
     #endregion
 
     #region Remove Tests
@@ -809,7 +821,6 @@ public class StringWeaverTests
         Assert.Throws<ArgumentOutOfRangeException>(() => sw.CopyBlock(0, 10, dest.AsSpan()));
     }
 
-#if !NETSTANDARD2_0
     [Fact]
     public void CopyTo_IBufferWriter_Writes()
     {
@@ -827,7 +838,6 @@ public class StringWeaverTests
         sw.CopyBlock(6, 5, writer);
         Assert.Equal("world", new string(writer.WrittenSpan));
     }
-#endif
     #endregion
 
     #region IBufferWriter Tests
@@ -965,11 +975,7 @@ public class StringWeaverTests
     public void ReplaceAll_WithWriter_ReplacesAllMatches()
     {
         var sw = new SW("a1b2c3");
-        sw.ReplaceAll(new PcreRegex(@"\d"), 1, (buf, match) =>
-        {
-            buf[0] = 'X';
-            buf[1] = '\0';
-        });
+        sw.ReplaceAll(new PcreRegex(@"\d"), 1, (buf, match) => buf[0] = 'X');
         Assert.Equal("aXbXcX", sw.ToString());
     }
     #endregion
@@ -1013,6 +1019,961 @@ public class StringWeaverTests
         var sw = new SW("test");
         var span = sw.Span;
         Assert.Equal("test", new string(span));
+    }
+    #endregion
+
+    #region Additional Coverage Tests for Uncovered Paths
+    [Fact]
+    public void Append_RefChar_InvalidLength_Throws()
+    {
+        var sw = new SW();
+        var chars = "test".ToCharArray();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Append(in chars[0], -1));
+    }
+
+    [Fact]
+    public void Append_RefChar_AppendsCorrectly()
+    {
+        var sw = new SW();
+        var chars = "hello".ToCharArray();
+        sw.Append(in chars[0], chars.Length);
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public unsafe void AppendLine_UnsafePointer_AppendsWithNewLine()
+    {
+        var sw = new SW();
+        var str = "test";
+        fixed (char* ptr = str)
+        {
+            sw.AppendLine(ptr, str.Length);
+        }
+        Assert.Equal("test" + Environment.NewLine, sw.ToString());
+    }
+
+    [Fact]
+    public void AppendLine_RefChar_AppendsWithNewLine()
+    {
+        var sw = new SW();
+        var chars = "test".ToCharArray();
+        sw.AppendLine(in chars[0], chars.Length);
+        Assert.Equal("test" + Environment.NewLine, sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Char_WithStart_ReplacesFirstOccurrence()
+    {
+        var sw = new SW("hello world hello");
+        sw.Replace('l', 'x', 6);
+        Assert.Equal("hello worxd hello", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Char_NotFound_NoChange()
+    {
+        var sw = new SW("hello");
+        sw.Replace('z', 'x', 0, 5);
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Char_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("hello hello");
+        sw.ReplaceAll('l', 'x', 6);
+        Assert.Equal("hello hexxo", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Span_WithStart_ReplacesFirstOccurrence()
+    {
+        var sw = new SW("test test test");
+        sw.Replace("test".AsSpan(), "pass".AsSpan(), 5);
+        Assert.Equal("test pass test", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Span_NotFound_NoChange()
+    {
+        var sw = new SW("hello");
+        sw.Replace("world".AsSpan(), "universe".AsSpan(), 0, 5);
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test test test");
+        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 5);
+        Assert.Equal("test pass pass", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Range_UsingSystemRange_ReplacesCorrectly()
+    {
+        var sw = new SW("hello world");
+        sw.Replace(6..11, "earth".AsSpan());
+        Assert.Equal("hello earth", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.Replace(new PcreRegex(@"\d+"), "XXX".AsSpan(), 7);
+        Assert.Equal("test123testXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.Replace((PcreRegex)null, "x".AsSpan()));
+    }
+
+    [Fact]
+    public void ReplaceAll_PcreRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAll(new PcreRegex(@"\d"), "X".AsSpan(), 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_WithWriter_InvalidBufferSize_Throws()
+    {
+        var sw = new SW("test123");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.Replace(new PcreRegex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_WithWriter_NoMatch_NoChange()
+    {
+        var sw = new SW("test");
+        sw.Replace(new PcreRegex(@"\d+"), 10, (buf, match) => "XXX".AsSpan().CopyTo(buf));
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_PcreRegex_WithWriter_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.Replace(new PcreRegex(@"\d+"), 10, (buf, match) =>
+        {
+            "XXX".AsSpan().CopyTo(buf);
+            buf[3] = '\0';
+        }, 7);
+        Assert.Equal("test123testXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_PcreRegex_WithWriter_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAll(new PcreRegex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_InvalidLength_Throws()
+    {
+        var sw = new SW("test123");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.ReplaceExact(new PcreRegex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.ReplaceExact(new PcreRegex(@"\d+"), 5, (buf, match) => "XXXXX".AsSpan().CopyTo(buf), 7);
+        Assert.Equal("test123testXXXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_WithWriter_ReplacesAll()
+    {
+        var sw = new SW("a1b2c3");
+        sw.ReplaceAllExact(new PcreRegex(@"\d"), 3, (buf, match) => "XXX".AsSpan().CopyTo(buf));
+        Assert.Equal("aXXXbXXXcXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAllExact(new PcreRegex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.Replace(new Regex(@"\d+"), "XXX".AsSpan(), 7);
+        Assert.Equal("test123testXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.Replace((Regex)null, "x".AsSpan()));
+    }
+
+    [Fact]
+    public void ReplaceAll_SystemRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAll(new Regex(@"\d"), "X".AsSpan(), 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_WithWriter_CallsCorrectly()
+    {
+        var sw = new SW("test123");
+        sw.Replace(new Regex(@"\d+"), 10, (buf, match) =>
+        {
+            "ABC".AsSpan().CopyTo(buf);
+            buf[3] = '\0';
+        });
+        Assert.Equal("testABC", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_WithWriter_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.Replace(new Regex(@"\d+"), 10, (buf, match) =>
+        {
+            "XXX".AsSpan().CopyTo(buf);
+            buf[3] = '\0';
+        }, 7);
+        Assert.Equal("test123testXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_SystemRegex_WithWriter_ReplacesAll()
+    {
+        var sw = new SW("a1b2c3");
+        sw.ReplaceAll(new Regex(@"\d"), 1, (buf, match) => buf[0] = 'X');
+        Assert.Equal("aXbXcX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_SystemRegex_WithWriter_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAll(new Regex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceExact_SystemRegex_UsesExactLength()
+    {
+        var sw = new SW("test123");
+        sw.ReplaceExact(new Regex(@"\d+"), 5, (buf, match) => "ABCDE".AsSpan().CopyTo(buf));
+        Assert.Equal("testABCDE", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceExact_SystemRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("test123test456");
+        sw.ReplaceExact(new Regex(@"\d+"), 5, (buf, match) => "XXXXX".AsSpan().CopyTo(buf), 7);
+        Assert.Equal("test123testXXXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAllExact_SystemRegex_ReplacesAll()
+    {
+        var sw = new SW("a1b2c3");
+        sw.ReplaceAllExact(new Regex(@"\d"), 3, (buf, match) => "XXX".AsSpan().CopyTo(buf));
+        Assert.Equal("aXXXbXXXcXXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAllExact_SystemRegex_WithStart_ReplacesFromStart()
+    {
+        var sw = new SW("1test2test3");
+        sw.ReplaceAllExact(new Regex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
+        Assert.Equal("1testXtestX", sw.ToString());
+    }
+
+    [Fact]
+    public void IndexOf_SystemRegex_FindsMatch()
+    {
+        var sw = new SW("test123");
+        var index = sw.IndexOf(new Regex(@"\d+"));
+        Assert.Equal(4, index);
+    }
+
+    [Fact]
+    public void IndexOf_SystemRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.IndexOf((Regex)null));
+    }
+
+    [Fact]
+    public void IndexOf_SystemRegex_WithStart_FindsFromStart()
+    {
+        var sw = new SW("test123test456");
+        var index = sw.IndexOf(new Regex(@"\d+"), 7);
+        Assert.Equal(11, index);
+    }
+
+    [Fact]
+    public void IndexOf_SystemRegex_WithRange_FindsInRange()
+    {
+        var sw = new SW("test123test456");
+        var index = sw.IndexOf(new Regex(@"\d+"), 0, 10);
+        Assert.Equal(4, index);
+    }
+
+    [Fact]
+    public void IndexOf_PcreRegex_FindsMatch()
+    {
+        var sw = new SW("test123");
+        var index = sw.IndexOf(new PcreRegex(@"\d+"));
+        Assert.Equal(4, index);
+    }
+
+    [Fact]
+    public void IndexOf_PcreRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.IndexOf((PcreRegex)null));
+    }
+
+    [Fact]
+    public void IndexOf_PcreRegex_WithStart_FindsFromStart()
+    {
+        var sw = new SW("test123test456");
+        var index = sw.IndexOf(new PcreRegex(@"\d+"), 7);
+        Assert.Equal(11, index);
+    }
+
+    [Fact]
+    public void IndexOf_PcreRegex_WithRange_FindsInRange()
+    {
+        var sw = new SW("test123test456");
+        var index = sw.IndexOf(new PcreRegex(@"\d+"), 0, 10);
+        Assert.Equal(4, index);
+    }
+
+    [Fact]
+    public void IndexOf_PcreRegex_NotFound_ReturnsMinusOne()
+    {
+        var sw = new SW("test");
+        var index = sw.IndexOf(new PcreRegex(@"\d+"));
+        Assert.Equal(-1, index);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_Char_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("ababab");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe('a', 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([2, 4], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_Char_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("ababab");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe('a', 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([0, 2], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_Char_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("ababab");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf('a', 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([2, 4], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_Char_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("ababab");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf('a', 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([0, 2], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_Span_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("test test test");
+        var indices = new List<int>();
+        foreach (var index in sw.EnumerateIndicesOfUnsafe("test".AsSpan(), 5))
+        {
+            indices.Add(index);
+        }
+        Assert.Equal([5, 10], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_Span_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("test test test");
+        var indices = new List<int>();
+        foreach (var index in sw.EnumerateIndicesOf("test".AsSpan(), 5))
+        {
+            indices.Add(index);
+        }
+        Assert.Equal([5, 10], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_Span_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("test test test");
+        var indices = new List<int>();
+        foreach (var index in sw.EnumerateIndicesOf("test".AsSpan(), 0, 9))
+        {
+            indices.Add(index);
+        }
+        Assert.Equal([0, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_PcreRegex_EnumeratesMatches()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new PcreRegex(@"\d")))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_PcreRegex_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new PcreRegex(@"\d"), 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_PcreRegex_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new PcreRegex(@"\d"), 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_PcreRegex_EnumeratesMatches()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new PcreRegex(@"\d")))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_PcreRegex_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new PcreRegex(@"\d"), 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_PcreRegex_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new PcreRegex(@"\d"), 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_SystemRegex_EnumeratesMatches()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new Regex(@"\d")))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_SystemRegex_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new Regex(@"\d"), 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_SystemRegex_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new Regex(@"\d"), 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_SystemRegex_EnumeratesMatches()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new Regex(@"\d")))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_SystemRegex_WithStart_EnumeratesFromStart()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new Regex(@"\d"), 2))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([3, 5], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_SystemRegex_WithRange_EnumeratesInRange()
+    {
+        var sw = new SW("a1b2c3");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOf(new Regex(@"\d"), 0, 4))
+        {
+            indices.Add(idx);
+        }
+
+        Assert.Equal([1, 3], indices);
+    }
+
+    [Fact]
+    public void IndexOfAny_SearchValues_FindsFirstMatch()
+    {
+        var sw = new SW("hello world");
+        var searchValues = SearchValues.Create("aeiou".AsSpan());
+        Assert.Equal(1, sw.IndexOfAny(searchValues));
+    }
+
+    [Fact]
+    public void IndexOfAny_SearchValues_WithStart_FindsFromStart()
+    {
+        var sw = new SW("hello world");
+        var searchValues = SearchValues.Create("aeiou".AsSpan());
+        Assert.Equal(4, sw.IndexOfAny(searchValues, 2));
+    }
+
+    [Fact]
+    public void IndexOfAny_SearchValues_WithRange_FindsInRange()
+    {
+        var sw = new SW("hello world");
+        var searchValues = SearchValues.Create("aeiou".AsSpan());
+        Assert.Equal(1, sw.IndexOfAny(searchValues, 0, 3));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_SearchValues_FindsFirstNonMatch()
+    {
+        var sw = new SW("aaaabbbb");
+        var searchValues = SearchValues.Create("a".AsSpan());
+        Assert.Equal(4, sw.IndexOfAnyExcept(searchValues));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_SearchValues_WithStart_FindsFromStart()
+    {
+        var sw = new SW("aaaabbbb");
+        var searchValues = SearchValues.Create("ab".AsSpan());
+        Assert.Equal(-1, sw.IndexOfAnyExcept(searchValues, 0));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_SearchValues_WithRange_FindsInRange()
+    {
+        var sw = new SW("aaaabbbb");
+        var searchValues = SearchValues.Create("a".AsSpan());
+        Assert.Equal(4, sw.IndexOfAnyExcept(searchValues, 0, 8));
+    }
+
+    [Fact]
+    public void IndexOfAny_SearchValues_NotFound_ReturnsMinusOne()
+    {
+        var sw = new SW("hello");
+        var searchValues = SearchValues.Create("xyz".AsSpan());
+        Assert.Equal(-1, sw.IndexOfAny(searchValues));
+    }
+
+    [Fact]
+    public void IndexOfAnyInRange_WithStart_FindsFromStart()
+    {
+        var sw = new SW("abc123abc");
+        Assert.Equal(6, sw.IndexOfAnyInRange('a', 'z', 5));
+    }
+
+    [Fact]
+    public void IndexOfAnyExceptInRange_WithStart_FindsFromStart()
+    {
+        var sw = new SW("123abc123");
+        Assert.Equal(6, sw.IndexOfAnyExceptInRange('a', 'z', 5));
+    }
+
+    [Fact]
+    public void IndexOfAny_WithStart_InvalidRange_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.IndexOfAny("x".AsSpan(), -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.IndexOfAny("x".AsSpan(), 10));
+    }
+
+    [Fact]
+    public void IndexOfAnyExcept_WithStart_InvalidRange_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.IndexOfAnyExcept("x".AsSpan(), -1));
+    }
+
+    [Fact]
+    public void IndexOfAnyInRange_WithStart_InvalidRange_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.IndexOfAnyInRange('a', 'z', -1));
+    }
+
+    [Fact]
+    public void IndexOfAnyExceptInRange_WithStart_InvalidRange_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.IndexOfAnyExceptInRange('a', 'z', -1));
+    }
+
+    [Fact]
+    public void Remove_UsingRange_RemovesCorrectly()
+    {
+        var sw = new SW("hello world");
+        sw.Remove(6..11);
+        Assert.Equal("hello ", sw.ToString());
+    }
+
+    [Fact]
+    public void Remove_CharValue_WithRange_RemovesOccurrences()
+    {
+        var sw = new SW("abcabc");
+        sw.Remove('a', 0..6);
+        Assert.Equal("bcbc", sw.ToString());
+    }
+
+    [Fact]
+    public void CopyTo_TextWriter_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        using var writer = new StringWriter();
+        sw.CopyTo(writer);
+        Assert.Equal("hello world", writer.ToString());
+    }
+
+    [Fact]
+    public void CopyTo_TextWriter_Null_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.CopyTo((TextWriter)null));
+    }
+
+    [Fact]
+    public void CopyBlock_TextWriter_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        using var writer = new StringWriter();
+        sw.CopyBlock(6, 5, writer);
+        Assert.Equal("world", writer.ToString());
+    }
+
+    [Fact]
+    public void CopyBlock_TextWriter_Null_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.CopyBlock(0, 4, (TextWriter)null));
+    }
+
+    [Fact]
+    public void CopyTo_IBufferWriter_Null_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.CopyTo((IBufferWriter<char>)null));
+    }
+
+    [Fact]
+    public void CopyBlock_IBufferWriter_Null_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() => sw.CopyBlock(0, 4, (IBufferWriter<char>)null));
+    }
+
+    [Fact]
+    public unsafe void CopyTo_RefChar_CopiesCorrectly()
+    {
+        var sw = new SW("hello");
+        var dest = new char[5];
+        sw.CopyTo(ref dest[0]);
+        Assert.Equal("hello", new string(dest));
+    }
+
+    [Fact]
+    public unsafe void CopyBlock_RefChar_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        var dest = new char[5];
+        sw.CopyBlock(6, 5, ref dest[0]);
+        Assert.Equal("world", new string(dest));
+    }
+
+    [Fact]
+    public unsafe void CopyBlock_UnsafePointer_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        var dest = new char[5];
+        fixed (char* ptr = dest)
+        {
+            sw.CopyBlock(6, 5, ptr);
+        }
+        Assert.Equal("world", new string(dest));
+    }
+
+    [Fact]
+    public void CopyBlock_Array_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        var dest = new char[10];
+        sw.CopyBlock(6, 5, dest, 2);
+        Assert.Equal("world", new string(dest, 2, 5));
+    }
+
+    [Fact]
+    public void CopyBlock_Array_InvalidIndex_Throws()
+    {
+        var sw = new SW("hello");
+        var dest = new char[10];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.CopyBlock(0, 5, dest, -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.CopyBlock(0, 5, dest, 11));
+    }
+
+    [Fact]
+    public void CopyBlock_Array_InsufficientSpace_Throws()
+    {
+        var sw = new SW("hello");
+        var dest = new char[3];
+        Assert.Throws<ArgumentException>(() => sw.CopyBlock(0, 5, dest, 0));
+    }
+
+    [Fact]
+    public void CopyBlock_Memory_CopiesCorrectly()
+    {
+        var sw = new SW("hello world");
+        var dest = new Memory<char>(new char[5]);
+        sw.CopyBlock(6, 5, dest);
+        Assert.Equal("world", new string(dest.Span));
+    }
+
+    [Fact]
+    public void GetTextWriter_WritesToStringWeaver()
+    {
+        var sw = new SW();
+        var writer = sw.GetTextWriter();
+        writer.Write("hello");
+        writer.Write(" ");
+        writer.Write("world");
+        Assert.Equal("hello world", sw.ToString());
+    }
+
+    [Fact]
+    public void GetStream_WritesToStringWeaver()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream(Encoding.UTF8);
+        var bytes = Encoding.UTF8.GetBytes("hello world");
+        stream.Write(bytes, 0, bytes.Length);
+        Assert.Equal("hello world", sw.ToString());
+    }
+
+    [Fact]
+    public void GetStream_DefaultEncoding_WritesToStringWeaver()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        var bytes = Encoding.Default.GetBytes("test");
+        stream.Write(bytes, 0, bytes.Length);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void GetStream_CannotRead_ThrowsNotSupported()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        var buffer = new byte[10];
+        Assert.Throws<NotSupportedException>(() => stream.Read(buffer, 0, 10));
+    }
+
+    [Fact]
+    public void GetStream_CannotSeek_ThrowsNotSupported()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        Assert.Throws<NotSupportedException>(() => stream.Seek(0, SeekOrigin.Begin));
+    }
+
+    [Fact]
+    public void GetStream_CannotSetLength_ThrowsNotSupported()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        Assert.Throws<NotSupportedException>(() => stream.SetLength(10));
+    }
+
+    [Fact]
+    public void GetStream_Write_NullBuffer_Throws()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        Assert.Throws<ArgumentNullException>(() => stream.Write(null, 0, 0));
+    }
+
+    [Fact]
+    public void GetStream_Write_InvalidOffset_Throws()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        var buffer = new byte[10];
+        Assert.Throws<ArgumentOutOfRangeException>(() => stream.Write(buffer, -1, 5));
+    }
+
+    [Fact]
+    public void GetStream_Write_InvalidCount_Throws()
+    {
+        var sw = new SW();
+        using var stream = sw.GetStream();
+        var buffer = new byte[10];
+        Assert.Throws<ArgumentOutOfRangeException>(() => stream.Write(buffer, 0, 11));
+    }
+
+    [Fact]
+    public void Expand_Negative_Throws()
+    {
+        var sw = new SW();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Expand(-1));
+    }
+
+    [Fact]
+    public void EnsureCapacity_Negative_Throws()
+    {
+        var sw = new SW();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.EnsureCapacity(-1));
+    }
+
+    [Fact]
+    public void ValidateRange_InvalidStart_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Replace('x', 'y', -1, 1));
+    }
+
+    [Fact]
+    public void ValidateRange_InvalidLength_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Replace('x', 'y', 0, 100));
+    }
+
+    [Fact]
+    public void RangeIndexer_Get_OutOfRange_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => { var _ = sw[10..20]; });
+    }
+
+    [Fact]
+    public void GetWritableSpan_NegativeSize_ReturnsSpan()
+    {
+        var sw = new SW();
+        var span = sw.GetWritableSpan(-10);
+        Assert.True(span.Length > 0);
+    }
+
+    [Fact]
+    public void GetWritableMemory_NegativeSize_ReturnsMemory()
+    {
+        var sw = new SW();
+        var mem = sw.GetWritableMemory(-10);
+        Assert.True(mem.Length > 0);
     }
     #endregion
 }

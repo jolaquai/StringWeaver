@@ -128,7 +128,7 @@ public partial class StringWeaver : IBufferWriter<char>
             nextSearchIndex = start;
             _version = weaver.Version;
 
-            _searchEnd = length == -1 ? weaver.End : start + length;
+            _searchEnd = start + length;
         }
 
 #if NET7_0_OR_GREATER
@@ -156,7 +156,13 @@ public partial class StringWeaver : IBufferWriter<char>
 #if !NETSTANDARD2_0
             [DoesNotReturnIf(true)]
 #endif
-            bool condition) => throw new InvalidOperationException("The buffer was modified; enumeration may not continue.");
+            bool condition)
+            {
+                if (condition)
+                {
+                    throw new InvalidOperationException("The buffer was modified; enumeration may not continue.");
+                }
+            }
 
             if (nextSearchIndex >= _searchEnd)
             {
@@ -449,6 +455,21 @@ public partial class StringWeaver : IBufferWriter<char>
             UsableSpan[offset] = value;
         }
     }
+    /// <summary>
+    /// Gets a mutable <see cref="Span{T}"/> over a range of the used portion of the buffer or copies the specified <see cref="Span{T}"/> into that range.
+    /// </summary>
+    /// <param name="range">A <see cref="Range"/> that specifies the location and length of the desired span.</param>
+    /// <returns>The requested <see cref="Span{T}"/> over the used portion of the buffer. If returning from the <see langword="set"/>ter, this will NOT point into the buffer because <see langword="set"/>ters cannot return values.</returns>
+    public Span<char> this[Range range]
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            var (index, length) = range.GetOffsetAndLength(End);
+            ValidateRange(index, length);
+            return UsableSpan.Slice(index, length);
+        }
+    }
     #endregion
 
     #region .ctors
@@ -545,6 +566,28 @@ public partial class StringWeaver : IBufferWriter<char>
     public void AppendLine(char value)
     {
         Append(value);
+        AppendLine();
+    }
+    /// <summary>
+    /// Appends a single <see cref="char"/> to the end of the buffer <paramref name="count"/> times.
+    /// </summary>
+    /// <param name="value">The <see cref="char"/> to append.</param>
+    /// <param name="count">The number of times to append <paramref name="value"/>.</param>
+    public void Append(char value, int count)
+    {
+        Version++;
+        GetWritableSpan(count)[..count].Fill(value);
+        Expand(count);
+    }
+    /// <summary>
+    /// Appends a single <see cref="char"/> <paramref name="count"/> times followed by the current environment's default line terminator to the end of the buffer.
+    /// </summary>
+    /// <param name="value">The <see cref="char"/> to append.</param>
+    /// <param name="count">The number of times to append <paramref name="value"/>.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendLine(char value, int count)
+    {
+        Append(value, count);
         AppendLine();
     }
 
@@ -939,7 +982,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
         IEnumerable<int> Impl()
         {
-            var searchEnd = length == -1 ? End : index + length;
+            var searchEnd = index + length - 1;
             var idx = index;
 
             while (idx < searchEnd && (idx = IndexOf(value, idx)) != -1)
@@ -957,7 +1000,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public IEnumerable<int> EnumerateIndicesOf(char value)
     {
@@ -981,7 +1023,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public IEnumerable<int> EnumerateIndicesOf(char value, int index) => EnumerateIndicesOf(value, index, Length - index);
     /// <summary>
@@ -993,7 +1034,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public IEnumerable<int> EnumerateIndicesOf(char value, int index, int length)
     {
@@ -1006,7 +1046,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
         IEnumerable<int> Impl()
         {
-            var searchEnd = length == -1 ? End : index + length;
+            var searchEnd = index + length - 1;
             var idx = index;
 
             var beginVersion = Version;
@@ -1443,7 +1483,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndexEnumerator EnumerateIndicesOf(ReadOnlySpan<char> value) => new IndexEnumerator(this, value, 0, Length);
@@ -1455,7 +1494,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public IndexEnumerator EnumerateIndicesOf(ReadOnlySpan<char> value, int index) => EnumerateIndicesOf(value, index, Length - index);
     /// <summary>
@@ -1467,7 +1505,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where <paramref name="value"/> occurs in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public IndexEnumerator EnumerateIndicesOf(ReadOnlySpan<char> value, int index, int length)
     {
@@ -1522,7 +1559,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex) => new RegexMatchIndexEnumerator(this, regex, 0, Length);
@@ -1534,7 +1570,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex, int index) => EnumerateIndicesOf(regex, index, Length - index);
     /// <summary>
@@ -1546,7 +1581,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public RegexMatchIndexEnumerator EnumerateIndicesOf(PcreRegex regex, int index, int length)
     {
@@ -1602,7 +1636,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex) => new RegexMatchIndexEnumerator(this, regex, 0, Length);
@@ -1614,7 +1647,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex, int index) => EnumerateIndicesOf(regex, index, Length - index);
     /// <summary>
@@ -1626,7 +1658,6 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>An enumerator that yields the indices where matches of <paramref name="regex"/> occur in the buffer.</returns>
     /// <remarks>
     /// The enumeration is guaranteed to be stable; if the underlying buffer is modified during enumeration, an <see cref="InvalidOperationException"/> is thrown.
-    /// Conversely, each enumerator advancement becomes slightly more expensive.
     /// </remarks>
     public RegexMatchIndexEnumerator EnumerateIndicesOf(Regex regex, int index, int length)
     {
@@ -1879,7 +1910,8 @@ public partial class StringWeaver : IBufferWriter<char>
             return;
         }
         var idx = IndexOf(from, index, length);
-        while (idx != -1 && idx < length)
+        var searchEnd = index + length;
+        while (idx != -1 && idx < searchEnd)
         {
             UsableSpan[idx] = to;
             idx++;
@@ -1963,16 +1995,17 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="length">The number of characters after <paramref name="index"/> to consider for the search.</param>
     public void ReplaceAll(ReadOnlySpan<char> from, ReadOnlySpan<char> to, int index, int length)
     {
-        ValidateRange(index, length);
-        if (length == 0)
-        {
-            return;
-        }
-
         if (from.Length == 0)
         {
             throw new ArgumentException("The 'from' span must not be empty.", nameof(from));
         }
+
+        ValidateRange(index, length);
+        if (length < from.Length)
+        {
+            return;
+        }
+
         if (from.Overlaps(to, out var offset) && offset == 0)
         {
             return;
@@ -1982,7 +2015,13 @@ public partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        var possibleMatches = (length - index) / from.Length;
+        var possibleMatches = length / from.Length;
+
+        if (possibleMatches == 1 && Span.Slice(index, from.Length).SequenceEqual(from))
+        {
+            ReplaceCore(index, from.Length, to);
+            return;
+        }
 
         if (possibleMatches < SafeInt32Stackalloc)
         {
@@ -2079,7 +2118,7 @@ public partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        var match = regex.Match(Span[..length], index);
+        var match = regex.Match(Span[..(index + length)], index);
         ReplaceCore(match.Index, match.Length, to);
     }
 
@@ -2120,7 +2159,7 @@ public partial class StringWeaver : IBufferWriter<char>
         using var matchBuffer = regex.CreateMatchBuffer();
         var match = new PcreRefMatch();
         var start = index;
-        while ((match = matchBuffer.Match(Span[..length], start)).Success)
+        while ((match = matchBuffer.Match(Span[..(index + length)], start)).Success)
         {
             ReplaceCore(match.Index, match.Length, to);
             start = match.Index + to.Length; // Move past the current match
@@ -2178,8 +2217,13 @@ public partial class StringWeaver : IBufferWriter<char>
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
 
-        var match = regex.Match(Span[..length], index);
-        writeReplacementAction(buffer, Span[..length].Slice(match));
+        var match = regex.Match(Span[..(index + length)], index);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        writeReplacementAction(buffer, Span[..(index + length)].Slice(match));
 
         var endIdx = buffer.IndexOf('\0');
         var to = buffer;
@@ -2241,12 +2285,12 @@ public partial class StringWeaver : IBufferWriter<char>
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
         var match = new PcreRefMatch();
         var start = index;
-        while ((match = matchBuffer.Match(Span[..length], start)).Success)
+        while ((match = matchBuffer.Match(Span[..(index + length)], start)).Success)
         {
             // Clear the buffer, otherwise previous iteration's data may bleed through if the new content is shorter
             buffer.Clear();
 
-            writeReplacementAction(buffer, Span[..length].Slice(match));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(match));
             var endIdx = buffer.IndexOf('\0');
             var to = buffer;
             if (endIdx > -1)
@@ -2307,9 +2351,13 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
-        var match = regex.Match(Span[..length]);
+        var match = regex.Match(Span[..(index + length)], index);
+        if (!match.Success)
+        {
+            return;
+        }
 
-        writeReplacementAction(buffer, Span[..length].Slice(match));
+        writeReplacementAction(buffer, Span[..(index + length)].Slice(match));
         ReplaceCore(match.Index, match.Length, buffer);
     }
 
@@ -2367,11 +2415,11 @@ public partial class StringWeaver : IBufferWriter<char>
 
         PcreRefMatch match;
         var start = index;
-        while ((match = matchBuffer.Match(Span[..length], start)).Success)
+        while ((match = matchBuffer.Match(Span[..(index + length)], start)).Success)
         {
             buffer.Clear();
 
-            writeReplacementAction(buffer, Span[..length].Slice(match));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(match));
             ReplaceCore(match.Index, match.Length, buffer);
             start = match.Index + bufferSize; // Move past the current match
             length += bufferSize - match.Length;
@@ -2385,6 +2433,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(Regex regex, ReadOnlySpan<char> to) => Replace(regex, to, 0, Length);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>, starting from the specified <paramref name="index"/>.
@@ -2392,6 +2441,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(Regex regex, ReadOnlySpan<char> to, int index) => Replace(regex, to, index, Length - index);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2411,7 +2461,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
-        foreach (var vm in regex.EnumerateMatches(Span[..length], index))
+        foreach (var vm in regex.EnumerateMatches(Span[..(index + length)], index))
         {
             ReplaceCore(vm.Index, vm.Length, to);
             return;
@@ -2423,6 +2473,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAll(Regex regex, ReadOnlySpan<char> to) => ReplaceAll(regex, to, 0, Length);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>, starting from the specified <paramref name="index"/>.
@@ -2430,6 +2481,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="to">The replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/>.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAll(Regex regex, ReadOnlySpan<char> to, int index) => ReplaceAll(regex, to, index, Length - index);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer with a replacement <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2449,7 +2501,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
-        var currentEnumerator = regex.EnumerateMatches(Span[..length], index);
+        var currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], index);
 
         // Can't foreach over this because the lowering the compiler does for it breaks the reassignment we have to do below
         // The enumerator the foreach would be holding onto in that scenario has a stale ReadOnlySpan<char> input, which led to OOR exceptions inside ReplaceCore
@@ -2468,7 +2520,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
                 // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
                 length += to.Length - vm.Length;
-                currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
+                currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], newStart);
             }
         }
     }
@@ -2479,6 +2531,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum Length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction) => Replace(regex, bufferSize, writeReplacementAction, 0, Length);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action, starting from the specified <paramref name="index"/>.
@@ -2487,6 +2540,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="bufferSize">The maximum Length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction, int index) => Replace(regex, bufferSize, writeReplacementAction, index, Length - index);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2520,9 +2574,9 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
-        foreach (var vm in regex.EnumerateMatches(Span[..length]))
+        foreach (var vm in regex.EnumerateMatches(Span[..(index + length)], index))
         {
-            writeReplacementAction(buffer, Span[..length].Slice(vm));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(vm));
             var endIdx = buffer.IndexOf('\0');
             var to = buffer;
             if (endIdx > -1)
@@ -2540,6 +2594,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The maximum Length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements or, consequently, retain any content from the previous iteration.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAll(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction) => ReplaceAll(regex, bufferSize, writeReplacementAction, 0, Length);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action, starting from the specified <paramref name="index"/>.
@@ -2548,6 +2603,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="bufferSize">The maximum Length any single replacement will be. The first null character of the end of the supplied buffer marks the end of the replacement.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements or, consequently, retain any content from the previous iteration.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAll(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction, int index) => ReplaceAll(regex, bufferSize, writeReplacementAction, index, Length - index);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2580,7 +2636,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
-        var currentEnumerator = regex.EnumerateMatches(Span[..length]);
+        var currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], index);
 
         while (currentEnumerator.MoveNext())
         {
@@ -2588,7 +2644,7 @@ public partial class StringWeaver : IBufferWriter<char>
             // Clear the buffer, otherwise previous iteration's data may bleed through if the new content is shorter
             buffer.Clear();
 
-            writeReplacementAction(buffer, Span[..length].Slice(vm));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(vm));
             var endIdx = buffer.IndexOf('\0');
             var to = buffer;
             if (endIdx > -1)
@@ -2602,7 +2658,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
                 // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
                 length += to.Length - vm.Length;
-                currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
+                currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], newStart);
             }
         }
     }
@@ -2614,6 +2670,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The exact length of the replacement content.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceExact(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction) => ReplaceExact(regex, bufferSize, writeReplacementAction, 0, Length);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action, starting from the specified <paramref name="index"/>.
@@ -2623,6 +2680,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="bufferSize">The exact length of the replacement content.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceExact(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction, int index) => ReplaceExact(regex, bufferSize, writeReplacementAction, index, Length - index);
     /// <summary>
     /// Replaces the first occurrence of a <see cref="Regex"/> match in the buffer using a replacement action in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2656,9 +2714,9 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
-        foreach (var vm in regex.EnumerateMatches(Span[..length]))
+        foreach (var vm in regex.EnumerateMatches(Span[..(index + length)], index))
         {
-            writeReplacementAction(buffer, Span[..length].Slice(vm));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(vm));
             ReplaceCore(vm.Index, vm.Length, buffer);
             break;
         }
@@ -2671,6 +2729,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="regex">The <see cref="Regex"/> to match against the buffer.</param>
     /// <param name="bufferSize">The exact length of the replacement content.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAllExact(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction) => ReplaceAllExact(regex, bufferSize, writeReplacementAction, 0, Length);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action, starting from the specified <paramref name="index"/>.
@@ -2680,6 +2739,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="bufferSize">The exact length of the replacement content.</param>
     /// <param name="writeReplacementAction">A <see cref="StringWeaverWriter"/> that writes the replacement content to the buffer. The method must not assume that the buffer will be reused for subsequent replacements.</param>
     /// <param name="index">At which index in the buffer to start searching.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReplaceAllExact(Regex regex, int bufferSize, StringWeaverWriter writeReplacementAction, int index) => ReplaceAllExact(regex, bufferSize, writeReplacementAction, index, Length - index);
     /// <summary>
     /// Replaces all occurrences of a <see cref="Regex"/> match in the buffer using a replacement action in a range of the buffer delimited by <paramref name="index"/> and <paramref name="length"/>.
@@ -2713,7 +2773,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var buffer = bufferSize <= SafeCharStackalloc ? stackalloc char[bufferSize] : new char[bufferSize];
-        var currentEnumerator = regex.EnumerateMatches(Span[..length]);
+        var currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], index);
 
         while (currentEnumerator.MoveNext())
         {
@@ -2721,7 +2781,7 @@ public partial class StringWeaver : IBufferWriter<char>
             // Clear the buffer, otherwise previous iteration's data may bleed through if the new content is shorter
             buffer.Clear();
 
-            writeReplacementAction(buffer, Span[..length].Slice(vm));
+            writeReplacementAction(buffer, Span[..(index + length)].Slice(vm));
             ReplaceCore(vm.Index, vm.Length, buffer);
             if (bufferSize != vm.Length)
             {
@@ -2729,7 +2789,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
                 // If the replacement Length is different, we need a new enumerator (AND A NEW SPAN EVERY TIME!)
                 length += bufferSize - vm.Length;
-                currentEnumerator = regex.EnumerateMatches(Span[..length], newStart);
+                currentEnumerator = regex.EnumerateMatches(Span[..(index + length)], newStart);
             }
         }
     }
