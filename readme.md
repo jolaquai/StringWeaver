@@ -33,6 +33,9 @@ Namespace: `global::StringWeaver.Specialized`
 * `PooledStringWeaver`: Implements a `StringWeaver` that sources its backing buffers from `ArrayPool<char>.Shared` (or your own passed implementation of `ArrayPool<char>`). This allows keeping GC pressure low while still using managed memory.
   * Consider using this if you frequently create and dispose of `StringWeaver`s with moderate capacities (e.g. a few dozen kB or more).
   * &#x26A0; `PooledStringWeaver` implements `IDisposable` (`StringWeaver` does not). Not disposing of instances of `PooledStringWeaver` causes the buffer backing it to be lost to the pool, which is a memory leak and degrades performance of every other user of that `ArrayPool<char>` in your application.
+* `WrappingStringWeaver`: A truly zero-allocation wrapper for existing buffers that otherwise offer the full capabilities of the base `StringWeaver` implementation.
+  * Use this any time you already have some memory you want to treat as a `char` buffer and want to avoid copying at all costs.
+  * &#x26A0; `WrappingStringWeaver` only pins memory for you when specifically asked to do so (and only when given a `char[]` or `Memory<char>`). Given a `Span<char>` or a pointer (whether managed or unmanaged), it is the caller's responsibility to ensure the memory remains valid and accessible for the lifetime of the `WrappingStringWeaver` instance. Changing the contents of the memory outside of the `WrappingStringWeaver` instance should be done with caution but is generally safe (under the same constraints as the default `StringWeaver` implementation, e.g. `EnumerateIndicesOf` `ref struct`s ensuring the buffer wasn't modified during enumeration). See this variant's wiki page for more details and usage examples.
 
 # Inheritance
 

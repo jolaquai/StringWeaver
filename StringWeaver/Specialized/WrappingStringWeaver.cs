@@ -29,11 +29,6 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
     private static void ThrowResizeNotSupported() => throw new NotSupportedException($"Resizing is not supported by {nameof(WrappingStringWeaver)}.");
     private static void ValidateRangeForZeroBasedLength(int index, int length, int totalLength, int usedLength)
     {
-        if (totalLength <= 0)
-        {
-            throw new ArgumentException("The provided memory must whave a length greater than zero.", nameof(totalLength));
-        }
-
         if (index < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the provided memory.");
@@ -43,6 +38,13 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
             // length == 0 is disallowed because it would give the caller a completely useless instance that just holds onto a pinned array for no reason
             throw new ArgumentOutOfRangeException(nameof(length), $"Length ({length}) must be non-negative.");
         }
+
+        // Check totalLength AFTER length, otherwise the delegating ctor chains could throw misleading exceptions
+        if (totalLength <= 0)
+        {
+            throw new ArgumentException("The provided memory must have a length greater than zero.", nameof(totalLength));
+        }
+
         if (usedLength < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(usedLength), $"Used Length ({usedLength}) must be non-negative.");
@@ -114,19 +116,19 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
         if (pin)
         {
             _memorySource = MemorySource.Raw;
-            _memoryHandle = _memory.Slice(index, length).Pin();
+            _memoryHandle = memory.Slice(index, length).Pin();
             _pinnedPointer = (char*)_memoryHandle.Pointer;
             _pinnedMemoryViewProvider = new MemoryViewProvider<char>(_pinnedPointer, length);
         }
         else
         {
             _memorySource = MemorySource.MemoryForward;
-            _memory = memory;
+            _memory = memory.Slice(index, length);
         }
     }
     /// <summary>
     /// Initializes a new <see cref="WrappingStringWeaver"/> using the entirety of the provided <see cref="Span{T}"/> of <see langword="char"/> as the backing buffer.
-    /// The memory backing it is assumed to be pinned.
+    /// The memory backing it is assumed to be pinned (for example, <see langword="stackalloc"/>s are safe to use here).
     /// </summary>
     /// <param name="span">The <see cref="Span{T}"/> of <see langword="char"/> to use as backing buffer.</param>
     /// <param name="usedLength">The length of the used portion within the backing buffer.</param>
@@ -197,12 +199,12 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
     public WrappingStringWeaver(scoped ref char pointer, int length, int usedLength) : this((char*)Unsafe.AsPointer(ref pointer), length, usedLength) { }
     /// <summary>
     /// Initializes a new <see cref="WrappingStringWeaver"/> using the provided unmanaged memory buffer as the backing buffer.
-    /// It is assumed the location pointed to or into by <paramref name="pointer"/> is pinned.
+    /// It is assumed the location pointed to or into by <paramref name="pointer"/> is pinned (for example, using a <see cref="GCHandle"/> or through a <see langword="fixed"/> statement, or by nature if the target memory is unmanaged).
     /// </summary>
     /// <param name="pointer">A managed pointer to the start of the memory block to use as backing buffer.</param>
     /// <param name="length">The length of the memory block to use as backing buffer in <see langword="char"/> elements.</param>
     /// <param name="usedLength">The length of the used portion within the backing buffer.</param>
-    public WrappingStringWeaver(char* pointer, int length, int usedLength) : this(new Span<char>(pointer, length), usedLength) { }
+    public WrappingStringWeaver(char* pointer, int length, int usedLength) : this(new Span<char>(pointer, length), 0, length, usedLength) { }
     #endregion
 
     /// <summary>
@@ -222,10 +224,9 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
         switch (_memorySource)
         {
             case MemorySource.Raw:
+                ((IDisposable)_pinnedMemoryViewProvider).Dispose();
                 _memoryHandle.Dispose();
                 break;
-            default:
-                throw new InvalidOperationException("Unrecognized memory source.");
         }
 
         GC.SuppressFinalize(this);
