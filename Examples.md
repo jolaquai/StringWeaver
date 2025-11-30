@@ -45,7 +45,11 @@ class StringWeaver
 }
 ```
 
-Impressive, right? And still, that is far from all; several quality-of-life shorthand methods such as for trimming characters or sequences off either end of an instance's buffer are also provided, not to mention the borderline insane number of `IndexOf` (and similar) overloads for efficient searching. What follows are some common usage examples demonstrating how you'd use `StringWeaver` instead of `StringBuilder` or `StringWriter` for various tasks.
+Impressive, right? And still, that is far from all; several quality-of-life shorthand methods such as for trimming characters or sequences off either end of an instance's buffer are also provided, not to mention the borderline insane number of `IndexOf` (and similar) overloads for efficient searching.
+
+# Examples
+
+Here are some common usage examples demonstrating how you'd use `StringWeaver` instead of `StringBuilder` or `StringWriter` for various tasks.
 
 The following alias definitions can be used to make referring to `StringWeaver.StringWeaver` easier:
 * Put this at the top of a file: `using SW = StringWeaver.StringWeaver;`
@@ -59,51 +63,51 @@ The following alias definitions can be used to make referring to `StringWeaver.S
 
 [WIP]
 
-# Basic Appends
+## Basic Appends
 
 ```csharp
 var sw = new SW();
 
 ```
 
-# IndexOf/IndicesOf
+## IndexOf/IndicesOf
 
 
-# Replace(All)
+## Replace(All)
 
 
-# PcreRegex
+## PcreRegex
 
 
-# Regex
+## Regex
 
 
-# Remove
+## Remove
 
 
-# Trim
+## Trim
 
 
-# Length mods
+## Length mods
 
 
-# Clear
+## Clear
 
 
-# Copy
+## Copy
 
 
-# Grow
+## Grow
 
 
-# ToString
+## ToString
 
 
-# `TextWriter` wrapper
+## `TextWriter` wrapper
 
 
-# `Stream` wrapper
+## `Stream` wrapper
 
 
-# `IBufferWriter<char>` implementation
+## `IBufferWriter<char>` implementation
 
