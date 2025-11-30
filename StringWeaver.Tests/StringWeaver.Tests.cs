@@ -473,22 +473,32 @@ public class StringWeaverTests
         Assert.Equal("pass", sw.ToString());
     }
 
-    [Fact]
-    public void ReplaceAll_Span_ReplacesAll()
+    [Theory]
+    [InlineData("test TEST test", "ABC", "test ABC test", 4)]
+    [InlineData("test TEST test", "ABCD", "test ABCD test", 4)]
+    [InlineData("test TEST test", "ABCDE", "test ABCDE test", 4)]
+    [InlineData("test TEST TEST test", "ABC", "test ABC ABC test", 9)]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD ABCD test", 9)]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE ABCDE test", 9)]
+    public void ReplaceAll_Span_DifferentLengthReplacements_Work(string seed, string replacement, string expected, int length)
     {
-        var sw = new SW("test test test");
-        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan());
-        Assert.Equal("pass pass pass", sw.ToString());
+        var sw = new SW(seed);
+        sw.ReplaceAll("TEST", replacement, 5, length);
+        Assert.Equal(expected, sw.Span);
     }
 
     [Theory]
-    [InlineData("test test", "test pass")]
-    [InlineData("test test test", "test pass test")]
-    public void ReplaceAll_Span_WithRange_ReplacesInRange(string seed, string expected)
+    [InlineData("test TEST test", "ABC", "test ABC test", 4)]
+    [InlineData("test TEST test", "ABCD", "test ABCD test", 4)]
+    [InlineData("test TEST test", "ABCDE", "test ABCDE test", 4)]
+    [InlineData("test TEST TEST test", "ABC", "test ABC TEST test", 9)]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD TEST test", 9)]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE TEST test", 9)]
+    public void Replace_Span_DifferentLengthReplacements_Work(string seed, string replacement, string expected, int length)
     {
         var sw = new SW(seed);
-        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 5, 4);
-        Assert.Equal(expected, sw.ToString());
+        sw.Replace("TEST", replacement, 5, length);
+        Assert.Equal(expected, sw.Span);
     }
 
     [Fact]
@@ -579,6 +589,16 @@ public class StringWeaverTests
         var sw = new SW("a1b2c3");
         sw.ReplaceAll(new Regex(@"\d"), "X".AsSpan());
         Assert.Equal("aXbXcX", sw.ToString());
+    }
+    [Theory]
+    [InlineData("test TEST TEST test", "ABC", "test ABC ABC test")]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD ABCD test")]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE ABCDE test")]
+    public void ReplaceAll_SystemRegex_Paths(string seed, string replacement, string expected)
+    {
+        var sw = new SW(seed);
+        sw.ReplaceAll(new Regex("TEST"), replacement);
+        Assert.Equal(expected, sw.Span);
     }
     #endregion
 
@@ -948,6 +968,25 @@ public class StringWeaverTests
         sw.GetWritableMemory(initialCap + 1);
         Assert.True(sw.Capacity > initialCap);
     }
+
+    [Fact]
+    public void Grow_CallsEnsureZeroAligned_WhenPossible()
+    {
+        var sw = new SW();
+        var initialCapacity = sw.Capacity;
+        sw.Append('a', (initialCapacity / 2) + 1);
+        sw.Append('b');
+        sw.Trim('a');
+
+        Assert.NotEqual(0, sw.Start);
+        Assert.Equal(initialCapacity, sw.FullMemory.Length);
+
+        sw.EnsureCapacity(initialCapacity);
+
+        Assert.Equal(0, sw.Start);
+        // Ensure we didn't grow the buffer
+        Assert.Equal(initialCapacity, sw.FullMemory.Length);
+    }
     #endregion
 
     #region Regex Writer Tests
@@ -1168,12 +1207,22 @@ public class StringWeaverTests
         Assert.Equal("test123testXXX", sw.ToString());
     }
 
-    [Fact]
-    public void ReplaceAll_PcreRegex_WithWriter_WithStart_ReplacesFromStart()
+    [Theory]
+    [InlineData("test TEST test", "ABC", "test ABC test")]
+    [InlineData("test TEST test", "ABCD", "test ABCD test")]
+    [InlineData("test TEST test", "ABCDE", "test ABCDE test")]
+    [InlineData("test TEST TEST test", "ABC", "test ABC ABC test")]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD ABCD test")]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE ABCDE test")]
+    public void ReplaceAll_PcreRegex_WithWriter_WithStart_ReplacesFromStart(string seed, string replacement, string expected)
     {
-        var sw = new SW("1test2test3");
-        sw.ReplaceAll(new PcreRegex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
-        Assert.Equal("1testXtestX", sw.ToString());
+        var sw = new SW(seed);
+        sw.ReplaceAll(new PcreRegex("TEST"), 5, (buf, match) =>
+        {
+            buf.Clear();
+            replacement.CopyTo(buf);
+        }, 5);
+        Assert.Equal(expected, sw.Span);
     }
 
     [Fact]
@@ -1223,12 +1272,18 @@ public class StringWeaverTests
         Assert.Throws<ArgumentNullException>(() => sw.Replace((Regex)null, "x".AsSpan()));
     }
 
-    [Fact]
-    public void ReplaceAll_SystemRegex_WithStart_ReplacesFromStart()
+    [Theory]
+    [InlineData("test TEST test", "ABC", "test ABC test")]
+    [InlineData("test TEST test", "ABCD", "test ABCD test")]
+    [InlineData("test TEST test", "ABCDE", "test ABCDE test")]
+    [InlineData("test TEST TEST test", "ABC", "test ABC ABC test")]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD ABCD test")]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE ABCDE test")]
+    public void ReplaceAll_SystemRegex_WithStart_ReplacesFromStart(string seed, string replacement, string expected)
     {
-        var sw = new SW("1test2test3");
-        sw.ReplaceAll(new Regex(@"\d"), "X".AsSpan(), 5);
-        Assert.Equal("1testXtestX", sw.ToString());
+        var sw = new SW(seed);
+        sw.ReplaceAll(new Regex("TEST"), replacement, 5);
+        Assert.Equal(expected, sw.Span);
     }
 
     [Fact]
@@ -1263,12 +1318,22 @@ public class StringWeaverTests
         Assert.Equal("aXbXcX", sw.ToString());
     }
 
-    [Fact]
-    public void ReplaceAll_SystemRegex_WithWriter_WithStart_ReplacesFromStart()
+    [Theory]
+    [InlineData("test TEST test", "ABC", "test ABC test")]
+    [InlineData("test TEST test", "ABCD", "test ABCD test")]
+    [InlineData("test TEST test", "ABCDE", "test ABCDE test")]
+    [InlineData("test TEST TEST test", "ABC", "test ABC ABC test")]
+    [InlineData("test TEST TEST test", "ABCD", "test ABCD ABCD test")]
+    [InlineData("test TEST TEST test", "ABCDE", "test ABCDE ABCDE test")]
+    public void ReplaceAll_SystemRegex_WithWriter_WithStart_ReplacesFromStart(string seed, string replacement, string expected)
     {
-        var sw = new SW("1test2test3");
-        sw.ReplaceAll(new Regex(@"\d"), 1, (buf, match) => buf[0] = 'X', 5);
-        Assert.Equal("1testXtestX", sw.ToString());
+        var sw = new SW(seed);
+        sw.ReplaceAll(new Regex("TEST"), 5, (buf, match) =>
+        {
+            buf.Clear();
+            replacement.CopyTo(buf);
+        }, 5);
+        Assert.Equal(expected, sw.Span);
     }
 
     [Fact]

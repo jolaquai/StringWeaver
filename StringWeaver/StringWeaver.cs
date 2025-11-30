@@ -386,7 +386,7 @@ public partial class StringWeaver : IBufferWriter<char>
     public int FreeCapacity
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Capacity - End;
+        get => FullMemory.Length - End;
     }
 
     /// <summary>
@@ -3332,9 +3332,10 @@ public partial class StringWeaver : IBufferWriter<char>
         // Side effect of indices 0 of UsableMemory and FullMemory not being the same when Start != 0 is that we essentially lose capacity
         // This may not be the most optimal way to surface that implementation detail, but it's required to keep the current implementation well-behaved
         // As such, if we essentially have enough space to satisfy the request by just moving data to index 0, do that instead of asking the implementation to grow
-        if (FullMemory.Length >= requiredCapacity)
+        if (Start > 0)
         {
             EnsureZeroAligned();
+            Grow(requiredCapacity);
             return;
         }
         GrowCore(requiredCapacity);

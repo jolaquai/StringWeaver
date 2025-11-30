@@ -36,6 +36,7 @@ Namespace: `global::StringWeaver.Specialized`
 * `WrappingStringWeaver`: A truly zero-allocation wrapper for existing buffers that otherwise offer the full capabilities of the base `StringWeaver` implementation.
   * Use this any time you already have some memory you want to treat as a `char` buffer and want to avoid copying at all costs.
   * &#x26A0; `WrappingStringWeaver` only pins memory for you when specifically asked to do so (and only when given a `char[]` or `Memory<char>`). Given a `Span<char>` or a pointer (whether managed or unmanaged), it is the caller's responsibility to ensure the memory remains valid and accessible for the lifetime of the `WrappingStringWeaver` instance. Changing the contents of the memory outside of the `WrappingStringWeaver` instance should be done with caution but is generally safe (under the same constraints as the default `StringWeaver` implementation, e.g. `EnumerateIndicesOf` `ref struct`s ensuring the buffer wasn't modified during enumeration). See this variant's wiki page for more details and usage examples.
+  * While all constructors take buffers or pointers typed as `char` in some form, you can reinterpret any memory as `char` and use it with `WrappingStringWeaver`. Pinned memory reinterpreted using `Unsafe.As<TFrom, TTo>(ref TFrom)` is a good example of this.
 
 # Inheritance
 
