@@ -356,7 +356,6 @@ public partial class StringWeaver : IBufferWriter<char>
 
     /// <summary>
     /// Gets or sets the start index of the used portion of the buffer.
-    /// When overriding <see cref="UsableMemory"/>, do not expose any memory before this index.
     /// </summary>
     protected internal int Start { get; set; }
     /// <summary>
