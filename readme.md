@@ -64,6 +64,8 @@ v2.0.0 saw the introduction of breaking changes to further reduce allocations fo
 * `protected virtual void GrowCore(int requiredCapacity)`: Instead of `protected virtual void Grow(int requiredCapacity)`, you now override `GrowCore`. Because increasing `StringWeaver.Start` values effectively reduce the available capacity, a new branch was added that attempts to satisfy the capacity requirement without actually needing to allocate using `EnsureZeroAligned`.
 * `protected virtual void ClearCore()`: Introduced to support derived `StringWeaver` types that need to do additional cleanup when `Clear` is called or where clearing is not just setting `StringWeaver.Start` and `StringWeaver.End` to `0`.
 
+On a less... annoying note, `void ReplaceAll(ReadOnlySpan<char>, ReadOnlySpan<char>)` (and the overloads taking an `int index` and `int length`, as well as several methods that delegate to this one) had a path optimized that allocated temporary storage for the replacement process. This memory is now sourced either from a `stackalloc` or from native memory.
+
 # Global configuration
 
 The `static class StringWeaverConfiguration` exposes global configuration options for all `StringWeaver` variants where applicable. The options are usually strongly-typed and implemented in a thread-safe manner, however, altering options while the affected variants are in use will very likely lead to undefined behavior. I recommend very carefully thinking about what you're changing, why you're doing it and if it's really a good idea, then setting them on application startup and never touching the entire class again.

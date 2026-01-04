@@ -1,4 +1,6 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 
 using PCRE;
 
@@ -346,6 +348,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// The backing array for the buffer.
     /// </summary>
     private char[] buffer;
+    private Memory<char>? memoryOverBuffer;
     #endregion
 
     #region Props/Indexers
@@ -392,31 +395,46 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Gets a mutable <see cref="Memory{T}"/> over the entire buffer (including unused space before <see cref="Start"/> and after <see cref="End"/>).
     /// The overriding type's backing memory must be definitely assigned.
     /// </summary>
-    protected internal virtual Memory<char> FullMemory => buffer.AsMemory();
+    protected internal virtual Memory<char> FullMemory => memoryOverBuffer ??= buffer.AsMemory();
     /// <summary>
     /// Gets a mutable <see cref="Memory{T}"/> over the entire buffer (including unused space after <see cref="End"/>).
     /// </summary>
-    internal Memory<char> UsableMemory => FullMemory[Start..];
+    internal Memory<char> UsableMemory
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => FullMemory[Start..];
+    }
     /// <summary>
     /// Gets a mutable <see cref="Span{T}"/> over the entire buffer (including unused space).
     /// The overriding type's backing memory must be definitely assigned.
     /// </summary>
-    internal Span<char> UsableSpan => UsableMemory.Span;
-
+    internal Span<char> UsableSpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => UsableMemory.Span;
+    }
     /// <summary>
     /// Gets a mutable <see cref="Memory{T}"/> over the used portion of the buffer (not including unused space).
     /// </summary>
     /// <remarks>
     /// To obtain a writable <see cref="Memory{T}"/> that can be used to add content beyond the current <see cref="End"/>, use <see cref="GetWritableMemory(int)"/> instead.
     /// </remarks>
-    public Memory<char> Memory => FullMemory[Start..End];
+    public Memory<char> Memory
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => FullMemory[Start..End];
+    }
     /// <summary>
     /// Gets a mutable <see cref="Span{T}"/> over the used portion of the buffer (not including unused space).
     /// </summary>
     /// <remarks>
     /// To obtain a writable <see cref="Span{T}"/> that can be used to add content beyond the current <see cref="End"/>, use <see cref="GetWritableSpan(int)"/> instead.
     /// </remarks>
-    public Span<char> Span => Memory.Span;
+    public Span<char> Span
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Memory.Span;
+    }
     /// <summary>
     /// Gets or sets the <see langword="char"/> at the specified index in the used portion of the buffer.
     /// </summary>
@@ -481,29 +499,18 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Initializes a new <see cref="StringWeaver"/> with the specified capacity.
     /// </summary>
     /// <param name="capacity">The initial capacity of the buffer's backing array.</param>
-    public StringWeaver(int capacity = DefaultCapacity) : this([], capacity) { }
-    /// <summary>
-    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content.
-    /// </summary>
-    /// <param name="initialContent">A <see langword="string"/> that will be copied into the buffer.</param>
-    public StringWeaver(string initialContent) : this(initialContent.AsSpan(), initialContent.Length) { }
-    /// <summary>
-    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content and capacity.
-    /// </summary>
-    /// <param name="initialContent">A <see langword="string"/> that will be copied into the buffer.</param>
-    /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the Length of <paramref name="initialContent"/>.</param>
-    public StringWeaver(string initialContent, int capacity) : this(initialContent.AsSpan(), capacity) { }
+    public StringWeaver(int capacity = DefaultCapacity) : this(default(ReadOnlySpan<char>), capacity) { }
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the specified initial content.
     /// </summary>
     /// <param name="initialContent">A <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> that will be copied into the buffer.</param>
-    public StringWeaver(ReadOnlySpan<char> initialContent) : this(initialContent, initialContent.Length) { }
+    public StringWeaver(scoped ReadOnlySpan<char> initialContent) : this(initialContent, initialContent.Length) { }
     /// <summary>
     /// Initializes a new <see cref="StringWeaver"/> with the specified initial content and capacity.
     /// </summary>
     /// <param name="initialContent">The initial content to copy into the buffer.</param>
-    /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the Length of <paramref name="initialContent"/>.</param>
-    public StringWeaver(ReadOnlySpan<char> initialContent, int capacity)
+    /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the length of <paramref name="initialContent"/>.</param>
+    public StringWeaver(scoped ReadOnlySpan<char> initialContent, int capacity)
     {
         if (capacity < initialContent.Length)
         {
@@ -515,11 +522,77 @@ public partial class StringWeaver : IBufferWriter<char>
             capacity = initialContent.Length < DefaultCapacity ? DefaultCapacity : initialContent.Length;
         }
         buffer = new char[capacity];
+        memoryOverBuffer = buffer.AsMemory();
 
         if (initialContent.Length > 0)
         {
             End = initialContent.Length;
             initialContent.CopyTo(Span);
+        }
+    }
+    /// <summary>
+    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content that is UTF-8 encoded.
+    /// </summary>
+    /// <param name="utf8Data">A <see cref="ReadOnlySpan{T}"/> of <see langword="byte"/> that represents UTF-8 encoded character data that will be copied into the buffer.</param>
+    public StringWeaver(scoped ReadOnlySpan<byte> utf8Data) : this(utf8Data, Encoding.UTF8, utf8Data.Length) { }
+    /// <summary>
+    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content that is UTF-8 encoded and the specified capacity.
+    /// </summary>
+    /// <param name="utf8Data">A <see cref="ReadOnlySpan{T}"/> of <see langword="byte"/> that represents UTF-8 encoded character data that will be copied into the buffer.</param>
+    /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the length of the decoded <paramref name="utf8Data"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    public StringWeaver(scoped ReadOnlySpan<byte> utf8Data, int capacity) : this(utf8Data, Encoding.UTF8, capacity) { }
+    /// <summary>
+    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content that is encoded using the specified <see cref="Encoding"/>.
+    /// </summary>
+    /// <param name="bytes">A <see cref="ReadOnlySpan{T}"/> of <see langword="byte"/> that represents encoded character data that will be copied into the buffer.</param>
+    /// <param name="encoding">The <see cref="Encoding"/> used to decode the <paramref name="bytes"/> into characters.</param>
+    public StringWeaver(scoped ReadOnlySpan<byte> bytes, Encoding encoding) : this(bytes, encoding, -1) { }
+    /// <summary>
+    /// Initializes a new <see cref="StringWeaver"/> with the specified initial content that is UTF-8 encoded and the specified capacity.
+    /// </summary>
+    /// <param name="bytes">A <see cref="ReadOnlySpan{T}"/> of <see langword="byte"/> that represents encoded character data that will be copied into the buffer.</param>
+    /// <param name="encoding">The <see cref="Encoding"/> used to decode the <paramref name="bytes"/> into characters.</param>
+    /// <param name="capacity">The initial capacity of the buffer's backing array. Must not be less than the length of the decoded <paramref name="bytes"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    public StringWeaver(scoped ReadOnlySpan<byte> bytes, Encoding encoding, int capacity)
+    {
+        int charCount;
+        if (encoding.IsSingleByte)
+        {
+            charCount = bytes.Length;
+        }
+        else
+        {
+            unsafe
+            {
+                fixed (byte* ptr = bytes)
+                {
+                    charCount = encoding.GetCharCount(ptr, bytes.Length);
+                }
+            }
+        }
+
+        if (capacity != -1 && charCount > capacity)
+        {
+            throw new ArgumentOutOfRangeException(nameof(capacity), $"Decoded length {charCount} exceeds capacity {capacity}");
+        }
+        if (capacity <= DefaultCapacity)
+        {
+            capacity = charCount < DefaultCapacity ? DefaultCapacity : charCount;
+        }
+        buffer = new char[capacity];
+        memoryOverBuffer = buffer.AsMemory();
+
+        unsafe
+        {
+            var destSpan = FullMemory.Span;
+            fixed (byte* src = bytes)
+            fixed (char* dest = destSpan)
+            {
+                var written = encoding.GetChars(src, bytes.Length, dest, destSpan.Length);
+                End = written;
+            }
         }
     }
     /// <summary>
@@ -534,6 +607,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
         var span = other.Span;
         buffer = new char[other.Capacity];
+        memoryOverBuffer = buffer.AsMemory();
         End = span.Length;
         // More efficient than non-generic Array.Copy plus constrained to the occupied Length
         other.Span.CopyTo(Span);
@@ -2022,33 +2096,29 @@ public partial class StringWeaver : IBufferWriter<char>
             return;
         }
 
-        if (possibleMatches < SafeInt32Stackalloc)
+        var fromLen = from.Length;
+        var toLen = to.Length;
+        if (fromLen - toLen == 0)
         {
-            Span<int> indices = stackalloc int[possibleMatches];
-            var i = 0;
+            // Same length lets us just reuse the same enumerator AND avoid collecting indices
             foreach (var idx in EnumerateIndicesOfUnsafe(from, index, length))
             {
-                indices[i++] = idx;
+                ReplaceCore(idx, fromLen, to);
             }
-            ReplaceCore(indices[..i], from.Length, to);
+            return;
         }
-        else
-        {
-            var indices = ArrayPool<int>.Shared.Rent(possibleMatches);
-            try
-            {
-                var i = 0;
-                foreach (var idx in EnumerateIndicesOfUnsafe(from, index, length))
-                {
-                    indices[i++] = idx;
-                }
 
-                ReplaceCore(indices.AsSpan(0, i), from.Length, to);
-            }
-            finally
-            {
-                ArrayPool<int>.Shared.Return(indices);
-            }
+        using var nativeBuffer = possibleMatches > SafeInt32Stackalloc ? new NativeBuffer<int>(possibleMatches) : null;
+        scoped var indices = nativeBuffer is not null ? nativeBuffer.Memory.Span : stackalloc int[possibleMatches];
+
+        var i = -1;
+        foreach (var idx in EnumerateIndicesOfUnsafe(from, index, length))
+        {
+            indices[++i] = idx;
+        }
+        if (i > -1)
+        {
+            ReplaceCore(indices[..(i + 1)], fromLen, to);
         }
     }
 
@@ -3355,6 +3425,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         Array.Resize(ref buffer, requiredCapacity);
+        memoryOverBuffer = buffer.AsMemory();
     }
     /// <summary>
     /// Moves the entire used portion of the buffer to index <c>0</c>.

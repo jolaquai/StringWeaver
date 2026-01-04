@@ -1,4 +1,4 @@
-using SW = StringWeaver.StringWeaver;
+﻿using SW = StringWeaver.StringWeaver;
 
 namespace StringWeaver.Tests;
 
@@ -93,6 +93,39 @@ public class StringWeaverTests
         var sw = new SW(span, 100);
         Assert.Equal("test", sw.ToString());
         Assert.True(sw.Capacity >= 100);
+    }
+
+    [Fact]
+    public void Constructor_Utf8ByteArray_DecodesCorrectly()
+    {
+        var utf8Bytes = new byte[] { 0xE2, 0x9C, 0x93 }; // Check mark character
+        var sw = new SW(utf8Bytes);
+        Assert.Equal("✓", sw.ToString());
+    }
+    [Fact]
+    public void Constructor_Utf8Literal_DecodesCorrectly()
+    {
+        var sw = new SW("✓"u8);
+        Assert.Equal("✓", sw.ToString());
+    }
+    [Fact]
+    public void Constructor_WithEncoding_DecodesCorrectly()
+    {
+        // ASCII, cyrillic, and accented characters
+        var bytes = Encoding.UTF32.GetBytes("café привет");
+
+        var sw = new SW(bytes, Encoding.UTF32);
+        Assert.Equal("café привет", sw.Span);
+    }
+    [Fact]
+    public void Constructor_WithEncoding_RespectsCapacity_ThrowsOnTooSmall()
+    {
+        var bytes = Encoding.UTF32.GetBytes("café привет");
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            new SW(bytes, Encoding.UTF32, 10); // 1 too small
+        });
     }
     #endregion
 

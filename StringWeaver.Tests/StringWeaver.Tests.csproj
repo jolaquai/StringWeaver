@@ -15,22 +15,22 @@
   </PropertyGroup>
 
   <ItemGroup>
-      <PackageReference Include="xunit.v3" Version="3.2.0" />
-      <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-      <PackageReference Include="coverlet.collector" Version="6.0.4" />
-      <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
+    <PackageReference Include="xunit.v3" Version="3.2.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="all" />
 
-      <ProjectReference Include="$(SolutionDir)StringWeaver\StringWeaver.csproj" />
+    <ProjectReference Include="$(SolutionDir)StringWeaver\StringWeaver.csproj" />
 
-      <Using Include="System" />
-      <Using Include="System.Buffers" />
-      <Using Include="System.Linq" />
-      <Using Include="System.Text" />
-      <Using Include="System.Text.RegularExpressions" />
+    <Using Include="System" />
+    <Using Include="System.Buffers" />
+    <Using Include="System.Linq" />
+    <Using Include="System.Text" />
+    <Using Include="System.Text.RegularExpressions" />
 
-      <Using Include="PCRE" />
+    <Using Include="PCRE" />
 
-      <Using Include="Xunit" />
+    <Using Include="Xunit" />
   </ItemGroup>
 
 </Project>

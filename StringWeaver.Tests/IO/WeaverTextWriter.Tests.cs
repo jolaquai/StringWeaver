@@ -38,7 +38,7 @@ public class WeaverTextWriterTests
         var weaver = new StringWeaver();
         var writer = weaver.GetTextWriter();
 
-        await writer.FlushAsync();
+        await writer.FlushAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]

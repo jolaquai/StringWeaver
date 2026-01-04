@@ -61,6 +61,10 @@ The following alias definitions can be used to make referring to `StringWeaver.S
 </ItemGroup>
 ```
 
+## Replacing typical bad code patterns
+
+Here's a series of common string manipulation tasks that are often done in inefficient ways, and how to do them better with `StringWeaver`.
+
 [WIP]
 
 ## Basic Appends
