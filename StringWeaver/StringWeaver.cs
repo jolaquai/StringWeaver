@@ -248,8 +248,8 @@ public partial class StringWeaver : IBufferWriter<char>
                 return false;
             }
 
-            var index = _weaver.IndexOf(_value, nextSearchIndex);
-            if (index != -1)
+            var index = _weaver.IndexOf(_value, nextSearchIndex, _searchEnd - nextSearchIndex);
+            if (index != -1 && index + _value.Length <= _searchEnd)
             {
                 Current = index;
                 nextSearchIndex = index + _value.Length;
@@ -301,8 +301,8 @@ public partial class StringWeaver : IBufferWriter<char>
                 return false;
             }
 
-            var index = _weaver.IndexOf(_value, nextSearchIndex);
-            if (index != -1)
+            var index = _weaver.IndexOf(_value, nextSearchIndex, _searchEnd - nextSearchIndex);
+            if (index != -1 && index + _value.Length <= _searchEnd)
             {
                 if (_version != _weaver.Version)
                 {
@@ -1988,7 +1988,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             UsableSpan[idx] = to;
             idx++;
-            idx = IndexOf(from, idx);
+            idx = IndexOf(from, idx, searchEnd - idx);
         }
     }
 
@@ -2346,7 +2346,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
         if (bufferSize == 0 || writeReplacementAction is null)
         {
-            Replace(regex, default, index, length);
+            ReplaceAll(regex, default, index, length);
             return;
         }
 
@@ -2991,7 +2991,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             end--;
         }
-        End = end + 1;
+        End = Start + end + 1;
     }
     /// <summary>
     /// Trims any of the specified <see langword="char"/>s from the end of the buffer.
@@ -3012,7 +3012,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             end--;
         }
-        End = end + 1;
+        End = Start + end + 1;
     }
     /// <summary>
     /// Trims the specified <see cref="ReadOnlySpan{T}"/> of <see langword="char"/> from both ends of the buffer.
@@ -3086,7 +3086,7 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             end -= value.Length;
         }
-        End = end + value.Length;
+        End = Start + end + value.Length;
     }
     #endregion
 

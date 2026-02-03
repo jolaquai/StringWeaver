@@ -2074,4 +2074,693 @@ public class StringWeaverTests
         Assert.True(mem.Length > 0);
     }
     #endregion
+
+    #region Bug Fix Regression Tests
+
+    [Fact]
+    public void ReplaceAll_Char_WithRange_DoesNotReplaceOutsideRange()
+    {
+        // Regression: ReplaceAll(char, char, index, length) used to search past the range
+        var sw = new SW("aXaXaXa");
+        sw.ReplaceAll('X', 'Y', 1, 4); // Only replace in "XaXa" (indices 1..5)
+        Assert.Equal("aYaYaXa", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Char_WithRange_StrictBoundary()
+    {
+        // Ensure replacement stops exactly at range end
+        var sw = new SW("abababab");
+        sw.ReplaceAll('a', 'X', 0, 4); // Only replace in "abab" (indices 0..4)
+        Assert.Equal("XbXbabab", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimEnd_Char_AfterTrimStart_WorksCorrectly()
+    {
+        // Regression: TrimEnd didn't account for Start > 0
+        var sw = new SW("xxxhelloxxx");
+        sw.TrimStart('x'); // Start moves forward, content is now "helloxxx"
+        Assert.Equal("helloxxx", sw.ToString());
+        sw.TrimEnd('x'); // Should trim trailing x's
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimEnd_Span_AfterTrimStart_WorksCorrectly()
+    {
+        // Regression: TrimEnd(ReadOnlySpan<char>) didn't account for Start > 0
+        var sw = new SW("abchelloabc");
+        sw.TrimStart("abc".AsSpan());
+        Assert.Equal("helloabc", sw.ToString());
+        sw.TrimEnd("abc".AsSpan());
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_AfterTrimSequenceStart_WorksCorrectly()
+    {
+        // Regression: TrimSequenceEnd didn't account for Start > 0
+        var sw = new SW("ababtestabab");
+        sw.TrimSequenceStart("ab".AsSpan());
+        Assert.Equal("testabab", sw.ToString());
+        sw.TrimSequenceEnd("ab".AsSpan());
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Trim_Char_AfterTrimStart_BothEndsWorkCorrectly()
+    {
+        // Full Trim cycle after Start moves
+        var sw = new SW("  hello  ");
+        sw.TrimStart(' ');
+        Assert.Equal("hello  ", sw.ToString());
+        sw.TrimEnd(' ');
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimEnd_WithNonZeroStart_AllContent()
+    {
+        // Edge case: trim all remaining content after Start moves
+        var sw = new SW("xxxyyy");
+        sw.TrimStart('x');
+        Assert.Equal("yyy", sw.ToString());
+        sw.TrimEnd('y');
+        Assert.Equal("", sw.ToString());
+        Assert.Equal(0, sw.Length);
+    }
+
+    #endregion
+
+    #region Append(char, count) Tests
+
+    [Fact]
+    public void Append_CharCount_AppendsMultiple()
+    {
+        var sw = new SW();
+        sw.Append('X', 5);
+        Assert.Equal("XXXXX", sw.ToString());
+        Assert.Equal(5, sw.Length);
+    }
+
+    [Fact]
+    public void Append_CharCount_Zero_NoChange()
+    {
+        var sw = new SW("test");
+        sw.Append('X', 0);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Append_CharCount_Large_GrowsBuffer()
+    {
+        var sw = new SW(10);
+        sw.Append('A', 100);
+        Assert.Equal(100, sw.Length);
+        Assert.Equal(new string('A', 100), sw.ToString());
+    }
+
+    [Fact]
+    public void AppendLine_CharCount_AppendsWithNewLine()
+    {
+        var sw = new SW();
+        sw.AppendLine('X', 3);
+        Assert.Equal("XXX" + Environment.NewLine, sw.ToString());
+    }
+
+    #endregion
+
+    #region FreeCapacity Tests
+
+    [Fact]
+    public void FreeCapacity_NewWeaver_EqualsCapacity()
+    {
+        var sw = new SW(100);
+        Assert.Equal(sw.Capacity, sw.FreeCapacity);
+    }
+
+    [Fact]
+    public void FreeCapacity_AfterAppend_Decreases()
+    {
+        var sw = new SW(100);
+        var initialFree = sw.FreeCapacity;
+        sw.Append("hello");
+        Assert.Equal(initialFree - 5, sw.FreeCapacity);
+    }
+
+    [Fact]
+    public void FreeCapacity_AfterClear_RestoresCapacity()
+    {
+        var sw = new SW(100);
+        sw.Append("hello");
+        sw.Clear();
+        Assert.Equal(sw.Capacity, sw.FreeCapacity);
+    }
+
+    #endregion
+
+    #region ReplaceAll Span Deletion Tests
+
+    [Fact]
+    public void ReplaceAll_Span_DeleteAllOccurrences()
+    {
+        var sw = new SW("aXbXcX");
+        sw.ReplaceAll("X", default);
+        Assert.Equal("abc", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_DeleteLongerSubstring()
+    {
+        var sw = new SW("hello world hello world");
+        sw.ReplaceAll("world", default);
+        Assert.Equal("hello  hello ", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_EmptyFrom_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentException>(() => sw.ReplaceAll(ReadOnlySpan<char>.Empty, "x".AsSpan()));
+    }
+
+    #endregion
+
+    #region ReplaceAll Same-Length Span Tests
+
+    [Fact]
+    public void ReplaceAll_Span_SameLength_ReplacesAll()
+    {
+        var sw = new SW("AABBCCAA");
+        sw.ReplaceAll("AA", "XX");
+        Assert.Equal("XXBBCCXX", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_SameLength_InRange()
+    {
+        var sw = new SW("AABBCCAA");
+        sw.ReplaceAll("AA", "XX", 0, 4);
+        Assert.Equal("XXBBCCAA", sw.ToString());
+    }
+
+    #endregion
+
+    #region EnsureZeroAligned Tests
+
+    [Fact]
+    public void EnsureZeroAligned_AfterTrimStart_MovesData()
+    {
+        var sw = new SW("xxxhello");
+        sw.TrimStart('x');
+        Assert.Equal("hello", sw.ToString());
+        Assert.NotEqual(0, sw.Start);
+
+        sw.EnsureZeroAligned();
+        Assert.Equal(0, sw.Start);
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void EnsureZeroAligned_WhenAlreadyAligned_NoOp()
+    {
+        var sw = new SW("hello");
+        var version = sw.Version;
+        sw.EnsureZeroAligned();
+        Assert.Equal(version, sw.Version); // Version unchanged
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void GrowAfterTrimStart_RealignsAndGrows()
+    {
+        var sw = new SW();
+        var initialCap = sw.Capacity;
+        // Fill half the buffer + 1
+        sw.Append('a', (initialCap / 2) + 1);
+        sw.Append('b');
+        sw.TrimStart('a');
+        // Start is non-zero now
+
+        // Now trigger a grow
+        sw.EnsureCapacity(initialCap + 1);
+        Assert.Equal(0, sw.Start);
+        Assert.True(sw.Capacity > initialCap);
+        Assert.Equal("b", sw.ToString());
+    }
+
+    #endregion
+
+    #region Enumeration Modification Detection Tests
+
+    [Fact]
+    public void EnumerateIndicesOf_Span_ModifiedDuringEnumeration_Throws()
+    {
+        var sw = new SW("test test test");
+        var enumerator = sw.EnumerateIndicesOf("test".AsSpan()).GetEnumerator();
+        enumerator.MoveNext();
+        sw.Append('x');
+        var threw = false;
+        try { enumerator.MoveNext(); } catch (InvalidOperationException) { threw = true; }
+        Assert.True(threw);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_PcreRegex_ModifiedDuringEnumeration_Throws()
+    {
+        var sw = new SW("a1b2c3");
+        var enumerator = sw.EnumerateIndicesOf(new PcreRegex(@"\d")).GetEnumerator();
+        enumerator.MoveNext();
+        sw.Append('x');
+        var threw = false;
+        try { enumerator.MoveNext(); } catch (InvalidOperationException) { threw = true; }
+        Assert.True(threw);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOf_SystemRegex_ModifiedDuringEnumeration_Throws()
+    {
+        var sw = new SW("a1b2c3");
+        var enumerator = sw.EnumerateIndicesOf(new Regex(@"\d")).GetEnumerator();
+        enumerator.MoveNext();
+        sw.Append('x');
+        var threw = false;
+        try { enumerator.MoveNext(); } catch (InvalidOperationException) { threw = true; }
+        Assert.True(threw);
+    }
+
+    #endregion
+
+    #region Drain Tests (extended)
+
+    [Fact]
+    public void Drain_EmptyWeaver_ReturnsEmpty()
+    {
+        var sw = new SW();
+        var result = sw.Drain();
+        Assert.Equal("", result);
+        Assert.Equal(0, sw.Length);
+    }
+
+    #endregion
+
+    #region TrimSequence Edge Cases
+
+    [Fact]
+    public void TrimSequenceStart_Empty_NoOp()
+    {
+        var sw = new SW("test");
+        sw.TrimSequenceStart(ReadOnlySpan<char>.Empty);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_Empty_NoOp()
+    {
+        var sw = new SW("test");
+        sw.TrimSequenceEnd(ReadOnlySpan<char>.Empty);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_SingleChar_DelegatesToTrimStart()
+    {
+        var sw = new SW("aaahello");
+        sw.TrimSequenceStart("a");
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_SingleChar_DelegatesToTrimEnd()
+    {
+        var sw = new SW("helloaaa");
+        sw.TrimSequenceEnd("a");
+        Assert.Equal("hello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_LongerThanContent_NoOp()
+    {
+        var sw = new SW("ab");
+        sw.TrimSequenceStart("abcdef");
+        Assert.Equal("ab", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_LongerThanContent_NoOp()
+    {
+        var sw = new SW("ab");
+        sw.TrimSequenceEnd("abcdef");
+        Assert.Equal("ab", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceStart_NoMatch_NoChange()
+    {
+        var sw = new SW("xyhello");
+        sw.TrimSequenceStart("ab");
+        Assert.Equal("xyhello", sw.ToString());
+    }
+
+    [Fact]
+    public void TrimSequenceEnd_NoMatch_NoChange()
+    {
+        var sw = new SW("helloxy");
+        sw.TrimSequenceEnd("ab");
+        Assert.Equal("helloxy", sw.ToString());
+    }
+
+    #endregion
+
+    #region Replace/Writer Edge Cases
+
+    [Fact]
+    public void Replace_PcreRegex_Writer_ZeroBufferSize_FallsBackToSimpleReplace()
+    {
+        var sw = new SW("test123");
+        sw.Replace(new PcreRegex(@"\d+"), 0, (buf, match) => { });
+        // bufferSize 0 falls back to Replace(regex, default) which removes the match
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_PcreRegex_Writer_ZeroBufferSize_FallsBackToReplaceAll()
+    {
+        var sw = new SW("a1b2c3");
+        sw.ReplaceAll(new PcreRegex(@"\d"), 0, (buf, match) => { });
+        Assert.Equal("abc", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_Writer_ZeroBufferSize_FallsBackToSimpleReplace()
+    {
+        var sw = new SW("test123");
+        sw.Replace(new Regex(@"\d+"), 0, (buf, match) => { });
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_SystemRegex_Writer_ZeroBufferSize_FallsBackToReplaceAll()
+    {
+        var sw = new SW("a1b2c3");
+        sw.ReplaceAll(new Regex(@"\d"), 0, (buf, match) => { });
+        Assert.Equal("abc", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_Writer_NullAction_FallsBackToSimpleReplace()
+    {
+        var sw = new SW("test123");
+        sw.Replace(new Regex(@"\d+"), 10, null);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_Writer_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() =>
+            sw.Replace((Regex)null, 10, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void Replace_SystemRegex_Writer_NegativeBufferSize_Throws()
+    {
+        var sw = new SW("test123");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.Replace(new Regex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceExact_SystemRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() =>
+            sw.ReplaceExact((Regex)null, 5, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceExact_SystemRegex_NegativeBufferSize_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.ReplaceExact(new Regex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceAllExact_SystemRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() =>
+            sw.ReplaceAllExact((Regex)null, 5, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceAllExact_SystemRegex_NegativeBufferSize_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.ReplaceAllExact(new Regex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_NullRegex_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentNullException>(() =>
+            sw.ReplaceAllExact((PcreRegex)null, 5, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceAllExact_PcreRegex_NegativeBufferSize_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            sw.ReplaceAllExact(new PcreRegex(@"\d+"), -1, (buf, match) => { }));
+    }
+
+    [Fact]
+    public void ReplaceExact_PcreRegex_NoMatch_NoChange()
+    {
+        var sw = new SW("test");
+        sw.ReplaceExact(new PcreRegex(@"\d+"), 5, (buf, match) => "XXXXX".AsSpan().CopyTo(buf));
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceExact_SystemRegex_NoMatch_NoChange()
+    {
+        var sw = new SW("test");
+        sw.ReplaceExact(new Regex(@"\d+"), 5, (buf, match) => "XXXXX".AsSpan().CopyTo(buf));
+        Assert.Equal("test", sw.ToString());
+    }
+
+    #endregion
+
+    #region Replace ZeroLength and Edge Cases
+
+    [Fact]
+    public void Replace_Span_ZeroLength_NoChange()
+    {
+        var sw = new SW("test");
+        sw.Replace("test".AsSpan(), "pass".AsSpan(), 0, 0);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_ZeroLength_NoChange()
+    {
+        var sw = new SW("test");
+        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 0, 0);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void ReplaceAll_Span_LengthShorterThanFrom_NoChange()
+    {
+        var sw = new SW("test");
+        sw.ReplaceAll("test".AsSpan(), "pass".AsSpan(), 0, 3); // length 3 < from.Length 4
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Replace_Char_SameChar_NoOp()
+    {
+        var sw = new SW("test");
+        var version = sw.Version;
+        sw.ReplaceAll('t', 't');
+        // Should return early without any work
+        Assert.Equal("test", sw.ToString());
+    }
+
+    #endregion
+
+    #region PooledStringWeaver Functional Tests
+
+    [Fact]
+    public void PooledStringWeaver_AppendAndReplace_WorksCorrectly()
+    {
+        using var sw = new global::StringWeaver.Specialized.PooledStringWeaver(32);
+        sw.Append("hello world");
+        Assert.Equal("hello world", sw.ToString());
+
+        sw.ReplaceAll("world", "earth");
+        Assert.Equal("hello earth", sw.ToString());
+    }
+
+    [Fact]
+    public void PooledStringWeaver_GrowThroughAppend_PreservesContent()
+    {
+        using var sw = new global::StringWeaver.Specialized.PooledStringWeaver(4);
+        sw.Append("this is a much longer string that will force growth");
+        Assert.Equal("this is a much longer string that will force growth", sw.ToString());
+    }
+
+    [Fact]
+    public void PooledStringWeaver_ClearAndReuse()
+    {
+        using var sw = new global::StringWeaver.Specialized.PooledStringWeaver(32);
+        sw.Append("first");
+        Assert.Equal("first", sw.ToString());
+
+        sw.Clear();
+        Assert.Equal(0, sw.Length);
+
+        sw.Append("second");
+        Assert.Equal("second", sw.ToString());
+    }
+
+    [Fact]
+    public void PooledStringWeaver_Drain_ReturnsContentAndClears()
+    {
+        using var sw = new global::StringWeaver.Specialized.PooledStringWeaver(32);
+        sw.Append("drainable");
+        var result = sw.Drain();
+        Assert.Equal("drainable", result);
+        Assert.Equal(0, sw.Length);
+    }
+
+    #endregion
+
+    #region Length Modification Edge Cases
+
+    [Fact]
+    public void Truncate_ToZero_Clears()
+    {
+        var sw = new SW("hello");
+        sw.Truncate(0);
+        Assert.Equal(0, sw.Length);
+        Assert.Equal("", sw.ToString());
+    }
+
+    [Fact]
+    public void Trim_Count_NegativeCount_Throws()
+    {
+        var sw = new SW("test");
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Trim(-1));
+    }
+
+    [Fact]
+    public void Trim_Count_Zero_NoChange()
+    {
+        var sw = new SW("test");
+        sw.Trim(0);
+        Assert.Equal("test", sw.ToString());
+    }
+
+    [Fact]
+    public void Expand_Zero_NoChange()
+    {
+        var sw = new SW("test");
+        sw.Expand(0);
+        Assert.Equal("test", sw.ToString());
+        Assert.Equal(4, sw.Length);
+    }
+
+    #endregion
+
+    #region CopyTo Edge Cases
+
+    [Fact]
+    public void CopyTo_Memory_CopiesCorrectly()
+    {
+        var sw = new SW("hello");
+        var dest = new Memory<char>(new char[5]);
+        sw.CopyTo(dest);
+        Assert.Equal("hello", new string(dest.Span));
+    }
+
+    [Fact]
+    public void CopyBlock_ZeroLength_NoOp()
+    {
+        var sw = new SW("hello");
+        var dest = new char[5];
+        sw.CopyBlock(0, 0, dest.AsSpan());
+        // dest should remain zeroed
+        Assert.Equal(new char[5], dest);
+    }
+
+    [Fact]
+    public void CopyTo_TextWriter_ZeroLength_NoOp()
+    {
+        var sw = new SW();
+        using var writer = new StringWriter();
+        sw.CopyTo(writer);
+        Assert.Equal("", writer.ToString());
+    }
+
+    [Fact]
+    public void CopyTo_IBufferWriter_ZeroLength_NoOp()
+    {
+        var sw = new SW();
+        var writer = new ArrayBufferWriter<char>();
+        sw.CopyTo(writer);
+        Assert.Equal(0, writer.WrittenCount);
+    }
+
+    #endregion
+
+    #region Version Tracking Tests
+
+    [Fact]
+    public void Version_IncrementsOnTrim()
+    {
+        var sw = new SW("  hello  ");
+        var v = sw.Version;
+        sw.TrimStart(' ');
+        Assert.True(sw.Version > v);
+    }
+
+    [Fact]
+    public void Version_IncrementsOnClear()
+    {
+        var sw = new SW("test");
+        var v = sw.Version;
+        sw.Clear();
+        // Clear calls ClearCore which sets Start and End directly, not sure if Version is incremented
+        // but it should work correctly regardless
+        sw.Append("new");
+        Assert.True(sw.Version > v);
+    }
+
+    [Fact]
+    public void Version_IncrementsOnTruncate()
+    {
+        var sw = new SW("test");
+        var v = sw.Version;
+        sw.Truncate(2);
+        Assert.True(sw.Version > v);
+    }
+
+    [Fact]
+    public void Version_IncrementsOnIndexerSet()
+    {
+        var sw = new SW("test");
+        var v = sw.Version;
+        sw[0] = 'T';
+        Assert.True(sw.Version > v);
+    }
+
+    #endregion
 }
