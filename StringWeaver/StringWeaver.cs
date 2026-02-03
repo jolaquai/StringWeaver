@@ -116,7 +116,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     public ref struct RegexMatchIndexEnumerator
     {
-        private readonly ulong _version;
+        private readonly uint _version;
         private readonly StringWeaver _weaver;
         private readonly PcreRegex _pcreRegex;
         private readonly int _searchEnd;
@@ -272,7 +272,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     public ref struct IndexEnumerator
     {
-        private readonly ulong _version;
+        private readonly uint _version;
         private readonly StringWeaver _weaver;
         private readonly ReadOnlySpan<char> _value;
         private readonly int _searchEnd;
@@ -411,7 +411,7 @@ public partial class StringWeaver : IBufferWriter<char>
     internal Span<char> UsableSpan
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => UsableMemory.Span;
+        get => FullMemory.Span[Start..];
     }
     /// <summary>
     /// Gets a mutable <see cref="Memory{T}"/> over the used portion of the buffer (not including unused space).
@@ -433,7 +433,7 @@ public partial class StringWeaver : IBufferWriter<char>
     public Span<char> Span
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Memory.Span;
+        get => FullMemory.Span[Start..End];
     }
     /// <summary>
     /// Gets or sets the <see langword="char"/> at the specified index in the used portion of the buffer.
@@ -625,6 +625,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// Appends a single <see cref="char"/> to the end of the buffer.
     /// </summary>
     /// <param name="value">The <see cref="char"/> to append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Append(char value)
     {
         GrowIfNeeded(End + 1);
@@ -1982,14 +1983,29 @@ public partial class StringWeaver : IBufferWriter<char>
         {
             return;
         }
-        var idx = IndexOf(from, index, length);
+
+#if NET8_0_OR_GREATER
+        Span.Slice(index, length).Replace(from, to);
+#else
+        var span = UsableSpan;
         var searchEnd = index + length;
+        var idx = span.Slice(index, length).IndexOf(from);
+        if (idx != -1)
+        {
+            idx += index;
+        }
         while (idx != -1 && idx < searchEnd)
         {
-            UsableSpan[idx] = to;
+            span[idx] = to;
             idx++;
-            idx = IndexOf(from, idx, searchEnd - idx);
+            if (idx >= searchEnd)
+            {
+                break;
+            }
+            var next = span[idx..searchEnd].IndexOf(from);
+            idx = next != -1 ? next + idx : -1;
         }
+#endif
     }
 
     /// <summary>
@@ -3142,7 +3158,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
         // Safety hatch: attempts to expand beyond the current capacity almost certainly means this method is being misused
         // This should never happen in practice since this method is intended to be used like the combination of ArrayBufferWriter.GetSpan and ArrayBufferWriter.Advance
-        if (End + written > UsableSpan.Length)
+        if (End + written > FullMemory.Length - Start)
         {
             throw new ArgumentOutOfRangeException(nameof(written),
                 $"Cannot expand beyond the current capacity of the buffer. This might indicate misuse of {nameof(StringWeaver)}.{nameof(Expand)} since any call to it should be preceded by a method that directly or indirectly grows the buffer.");
@@ -3388,7 +3404,7 @@ public partial class StringWeaver : IBufferWriter<char>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void GrowIfNeeded(int requiredCapacity)
     {
-        if (Capacity < requiredCapacity)
+        if (FullMemory.Length - Start < requiredCapacity)
         {
             Grow(requiredCapacity);
         }
@@ -3404,8 +3420,8 @@ public partial class StringWeaver : IBufferWriter<char>
         if (Start > 0)
         {
             EnsureZeroAligned();
-            Grow(requiredCapacity);
-            return;
+            if (FullMemory.Length >= requiredCapacity)
+                return;
         }
         GrowCore(requiredCapacity);
     }
@@ -3424,8 +3440,14 @@ public partial class StringWeaver : IBufferWriter<char>
             throw new InvalidOperationException("Maximum capacity reached, cannot grow further.");
         }
 
-        Array.Resize(ref buffer, requiredCapacity);
-        memoryOverBuffer = buffer.AsMemory();
+        var newBuffer = new char[requiredCapacity];
+        var usedLength = End - Start;
+        if (usedLength > 0)
+        {
+            buffer.AsSpan(Start, usedLength).CopyTo(newBuffer);
+        }
+        buffer = newBuffer;
+        memoryOverBuffer = newBuffer.AsMemory();
     }
     /// <summary>
     /// Moves the entire used portion of the buffer to index <c>0</c>.
@@ -3440,8 +3462,8 @@ public partial class StringWeaver : IBufferWriter<char>
 
         Version++;
 
-        var usedSpan = FullMemory[Start..End];
-        usedSpan.CopyTo(FullMemory);
+        var fullSpan = FullMemory.Span;
+        fullSpan[Start..End].CopyTo(fullSpan);
         End -= Start;
         Start = 0;
     }
@@ -3453,11 +3475,13 @@ public partial class StringWeaver : IBufferWriter<char>
     /// If allocating a <see langword="string"/> isn't necessary, use <see cref="Span"/> or <see cref="Memory"/> instead.
     /// </summary>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public sealed override string ToString() => Span.ToString();
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer, then clears the buffer for re-use.
     /// </summary>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public string Drain() => Drain(false);
     /// <summary>
     /// Creates a <see langword="string"/> from the current contents of the buffer, then clears the buffer for re-use, optionally wiping its contents.
@@ -3466,6 +3490,9 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <returns>The <see langword="string"/> representation of the current buffer contents.</returns>
     public string Drain(bool wipe)
     {
+        if (Length == 0)
+            return "";
+
         var str = ToString();
         Clear(wipe);
         return str;

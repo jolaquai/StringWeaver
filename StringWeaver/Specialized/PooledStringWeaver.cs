@@ -7,6 +7,7 @@ public sealed class PooledStringWeaver : StringWeaver, IDisposable
 {
     private readonly ArrayPool<char> _pool;
     private char[] buffer;
+    private Memory<char> _cachedMemory;
 
     #region .ctors
     /// <summary>
@@ -22,7 +23,7 @@ public sealed class PooledStringWeaver : StringWeaver, IDisposable
     #endregion
 
     /// <inheritdoc/>
-    protected internal override Memory<char> FullMemory => buffer.AsMemory();
+    protected internal override Memory<char> FullMemory => _cachedMemory;
     /// <inheritdoc/>
     protected override void GrowCore(int requiredCapacity)
     {
@@ -45,6 +46,7 @@ public sealed class PooledStringWeaver : StringWeaver, IDisposable
         }
 
         buffer = newBuffer;
+        _cachedMemory = newBuffer.AsMemory();
     }
 
     #region Cleanup
