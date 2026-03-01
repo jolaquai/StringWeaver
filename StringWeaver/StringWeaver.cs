@@ -449,8 +449,8 @@ public partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
-            var offset = index.GetOffset(End);
-            if (offset < 0 || offset >= End)
+            var offset = index.GetOffset(Length);
+            if (offset < 0 || offset >= Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
@@ -462,8 +462,8 @@ public partial class StringWeaver : IBufferWriter<char>
             {
                 throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
-            var offset = index.GetOffset(End);
-            if (offset < 0 || offset >= End)
+            var offset = index.GetOffset(Length);
+            if (offset < 0 || offset >= Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(index), $"Index ({index}) must be within the bounds of the used portion of the buffer.");
             }
@@ -482,7 +482,7 @@ public partial class StringWeaver : IBufferWriter<char>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            var (index, length) = range.GetOffsetAndLength(End);
+            var (index, length) = range.GetOffsetAndLength(Length);
             ValidateRange(index, length);
             return UsableSpan.Slice(index, length);
         }
@@ -630,7 +630,7 @@ public partial class StringWeaver : IBufferWriter<char>
     {
         GrowIfNeeded(End + 1);
         Version++;
-        UsableSpan[End++] = value;
+        FullMemory.Span[End++] = value;
     }
     /// <summary>
     /// Appends a single <see cref="char"/> followed by the current environment's default line terminator to the end of the buffer.
@@ -1056,10 +1056,10 @@ public partial class StringWeaver : IBufferWriter<char>
 
         IEnumerable<int> Impl()
         {
-            var searchEnd = index + length - 1;
+            var searchEnd = index + length;
             var idx = index;
 
-            while (idx < searchEnd && (idx = IndexOf(value, idx)) != -1)
+            while (idx < searchEnd && (idx = IndexOf(value, idx)) != -1 && idx < searchEnd)
             {
                 yield return idx;
                 idx++;
@@ -1120,11 +1120,11 @@ public partial class StringWeaver : IBufferWriter<char>
 
         IEnumerable<int> Impl()
         {
-            var searchEnd = index + length - 1;
+            var searchEnd = index + length;
             var idx = index;
 
             var beginVersion = Version;
-            while (idx < searchEnd && (idx = IndexOf(value, idx)) != -1)
+            while (idx < searchEnd && (idx = IndexOf(value, idx)) != -1 && idx < searchEnd)
             {
                 if (beginVersion != Version)
                 {
@@ -1755,30 +1755,7 @@ public partial class StringWeaver : IBufferWriter<char>
                 // Bump up Start to remove from the start
                 Start += len;
             }
-            else if (index + len == End)
-            {
-                // Move the End pointer back to remove from the end
-                End -= len;
-            }
-            else
-            {
-                // Copy everything after index + len TO the index
-                var remaining = Span[(index + len)..];
-                remaining.CopyTo(Span[index..]);
-                // Reduce Length
-                End -= len;
-            }
-        }
-        else if (to.Length < len)
-        {
-            if (index == 0)
-            {
-                var offset = len - to.Length;
-                Start += offset;
-
-                to.CopyTo(Span);
-            }
-            else if (index + len == End)
+            else if (index + len == Length)
             {
                 // Move the End pointer back to remove from the end
                 End -= len - to.Length;
@@ -1789,7 +1766,7 @@ public partial class StringWeaver : IBufferWriter<char>
             else
             {
                 // Also easy, copy everything after index + len to index + to.Length
-                if (index + len < End)
+                if (index + len < Length)
                 {
                     // Even better if there's nothing remaining since there's nothing we need to copy
                     var remaining = Span[(index + len)..];
@@ -1865,7 +1842,7 @@ public partial class StringWeaver : IBufferWriter<char>
             {
                 var srcStart = indices[i] + len;
                 var dstStart = srcStart + (lengthDiff * (i + 1));
-                var copyLen = (i == indices.Length - 1) ? End - srcStart : indices[i + 1] - srcStart;
+                var copyLen = (i == indices.Length - 1) ? Length - srcStart : indices[i + 1] - srcStart;
 
                 UsableSpan.Slice(srcStart, copyLen).CopyTo(UsableSpan.Slice(dstStart, copyLen));
                 to.CopyTo(UsableSpan.Slice(indices[i] + (lengthDiff * i), to.Length));
@@ -1882,7 +1859,7 @@ public partial class StringWeaver : IBufferWriter<char>
                 writePos += to.Length;
                 var readPos = indices[i] + len;
 
-                var nextIndex = (i + 1 < indices.Length) ? indices[i + 1] : End;
+                var nextIndex = (i + 1 < indices.Length) ? indices[i + 1] : Length;
                 var copyLen = nextIndex - readPos;
 
                 UsableSpan.Slice(readPos, copyLen).CopyTo(UsableSpan.Slice(writePos, copyLen));
@@ -2146,7 +2123,7 @@ public partial class StringWeaver : IBufferWriter<char>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Replace(Range range, ReadOnlySpan<char> to)
     {
-        var (idx, len) = range.GetOffsetAndLength(End);
+        var (idx, len) = range.GetOffsetAndLength(Length);
         Replace(idx, len, to);
     }
     /// <summary>
@@ -2204,6 +2181,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
 
         var match = regex.Match(Span[..(index + length)], index);
+        if (!match.Success) return;
         ReplaceCore(match.Index, match.Length, to);
     }
 
@@ -2889,7 +2867,7 @@ public partial class StringWeaver : IBufferWriter<char>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Remove(Range range)
     {
-        var (idx, len) = range.GetOffsetAndLength(End);
+        var (idx, len) = range.GetOffsetAndLength(Length);
         Replace(idx, len, default);
     }
     /// <summary>
@@ -2907,7 +2885,7 @@ public partial class StringWeaver : IBufferWriter<char>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Remove(char value, Range range)
     {
-        var (idx, len) = range.GetOffsetAndLength(End);
+        var (idx, len) = range.GetOffsetAndLength(Length);
         ReplaceAll([value], default, idx, len);
     }
     /// <summary>
@@ -2945,7 +2923,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see langword="char"/> to trim from the start.</param>
     public void TrimStart(char value)
     {
-        if (End == 0)
+        if (Length == 0)
         {
             return;
         }
@@ -2960,7 +2938,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
         if (start > 0)
         {
-            Start = start;
+            Start += start;
         }
     }
     /// <summary>
@@ -2969,7 +2947,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="values">The <see langword="char"/>s to trim from the start.</param>
     public void TrimStart(ReadOnlySpan<char> values)
     {
-        if (End == 0)
+        if (Length == 0)
         {
             return;
         }
@@ -2994,7 +2972,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="value">The <see langword="char"/> to trim from the end.</param>
     public void TrimEnd(char value)
     {
-        if (End == 0)
+        if (Length == 0)
         {
             return;
         }
@@ -3015,7 +2993,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="values">The <see langword="char"/>s to trim from the end.</param>
     public void TrimEnd(ReadOnlySpan<char> values)
     {
-        if (End == 0)
+        if (Length == 0)
         {
             return;
         }
@@ -3056,7 +3034,7 @@ public partial class StringWeaver : IBufferWriter<char>
             TrimStart(value[0]);
             return;
         }
-        if (End < value.Length || value.Length == 0)
+        if (Length < value.Length || value.Length == 0)
         {
             return;
         }
@@ -3071,7 +3049,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
         if (start > 0)
         {
-            Start = start;
+            Start += start;
             return;
         }
     }
@@ -3089,7 +3067,7 @@ public partial class StringWeaver : IBufferWriter<char>
             TrimEnd(value[0]);
             return;
         }
-        if (End < value.Length || value.Length == 0)
+        if (Length < value.Length || value.Length == 0)
         {
             return;
         }
@@ -3115,14 +3093,14 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="length"/> is negative or exceeds the current length of the buffer.</exception>
     public void Truncate(int length)
     {
-        if (length < 0 || length > End)
+        if (length < 0 || length > Length)
         {
             throw new ArgumentOutOfRangeException(nameof(length), "Length must be non-negative and not exceed the current length of the buffer.");
         }
 
         Version++;
 
-        End = length;
+        End = Start + length;
     }
     /// <summary>
     /// Decreases the length of the used portion of the buffer by the specified number of characters.
@@ -3137,7 +3115,7 @@ public partial class StringWeaver : IBufferWriter<char>
 
         Version++;
 
-        if (count > End)
+        if (count > Length)
         {
             Clear();
             return;
@@ -3177,13 +3155,13 @@ public partial class StringWeaver : IBufferWriter<char>
     {
         if (minimumSize <= 0)
         {
-            return UsableMemory[End..];
+            return UsableMemory[(End - Start)..];
         }
         if (minimumSize > FreeCapacity)
         {
             GrowIfNeeded(End + minimumSize);
         }
-        return UsableMemory[End..];
+        return UsableMemory[(End - Start)..];
     }
     /// <summary>
     /// Gets a <see cref="Span{T}"/> that can be used to write further content to the buffer.
@@ -3325,7 +3303,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="length">The number of characters to copy.</param>
     /// <param name="charPtr">The managed pointer to the destination memory block.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void CopyBlock(int index, int length, scoped ref char charPtr) => CopyBlock(index, length, new Span<char>((char*)Unsafe.AsPointer(ref charPtr), End));
+    public unsafe void CopyBlock(int index, int length, scoped ref char charPtr) => CopyBlock(index, length, new Span<char>((char*)Unsafe.AsPointer(ref charPtr), length));
     /// <summary>
     /// Copies a block delimited by <paramref name="index"/> and <paramref name="length"/> from the used portion of the buffer to a block of memory beginning at the specified unmanaged pointer.
     /// </summary>
@@ -3334,7 +3312,7 @@ public partial class StringWeaver : IBufferWriter<char>
     /// <param name="length">The number of characters to copy.</param>
     /// <param name="charPtr">The unmanaged pointer to the destination memory block.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void CopyBlock(int index, int length, char* charPtr) => CopyBlock(index, length, new Span<char>(charPtr, End));
+    public unsafe void CopyBlock(int index, int length, char* charPtr) => CopyBlock(index, length, new Span<char>(charPtr, length));
 
 #if !NETSTANDARD2_0
     /// <summary>
