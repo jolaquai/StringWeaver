@@ -31,7 +31,7 @@
     <PackageTags>string;stringbuilder;performance;buffer;mutable string</PackageTags>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
-    <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -68,7 +68,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\readme.md;..\LICENSE" Pack="True" PackagePath="/" />
+    <None Include="..\README.md;..\LICENSE" Pack="True" PackagePath="/" />
   </ItemGroup>
 
 </Project>
