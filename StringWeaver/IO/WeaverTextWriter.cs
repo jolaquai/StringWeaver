@@ -18,9 +18,9 @@ internal sealed class WeaverTextWriter : TextWriter
     }
 
     /// <summary>
-    /// Always returns <see langword="null"/> since <see langword="char"/>s are written to the underlying <see cref="StringWeaver"/> directly.
+    /// Returns <see cref="Encoding.Unicode"/> since <see langword="char"/>s are written to the underlying <see cref="StringWeaver"/> directly.
     /// </summary>
-    public override Encoding Encoding { get; }
+    public override Encoding Encoding { get; } = Encoding.Unicode;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Flush() { }

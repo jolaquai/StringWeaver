@@ -118,6 +118,34 @@ public class StartPointerTests
     }
 
     [Fact]
+    public void TrimStart_Span_AfterCharTrimStart_AdvancesStartCorrectly()
+    {
+        // Regression: TrimStart(ReadOnlySpan<char>) used Start = start instead of Start += start,
+        // which reset the pointer when Start was already > 0 from a prior trim.
+        var sw = new SW("AABBHello");
+        sw.TrimStart('A'); // Start moves to 2
+        Assert.Equal("BBHello", sw.ToString());
+        Assert.True(sw.Start > 0);
+        var startBefore = sw.Start;
+
+        sw.TrimStart("BB".AsSpan()); // Should advance Start by 2 more, not reset it
+        Assert.Equal("Hello", sw.ToString());
+        Assert.Equal(startBefore + 2, sw.Start);
+    }
+
+    [Fact]
+    public void TrimStart_Span_MultipleCalls_AccumulatesStartOffset()
+    {
+        // Chain three TrimStart(ReadOnlySpan<char>) calls — Start must accumulate, not reset
+        var sw = new SW("abcdHello");
+        sw.TrimStart("ab".AsSpan());
+        Assert.Equal("cdHello", sw.ToString());
+        sw.TrimStart("cd".AsSpan());
+        Assert.Equal("Hello", sw.ToString());
+        Assert.Equal(4, sw.Start);
+    }
+
+    [Fact]
     public void TrimStart_OnEmptyAfterTrimStart_DoesNotThrow()
     {
         var sw = new SW("XXX");

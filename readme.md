@@ -1,5 +1,7 @@
 The `StringWeaver` package exposes a custom high-performance builder for `string`s with a mutable, directly accessible buffer and a versatile API for manipulating the contents.
 
+> **Note:** `StringWeaver` is _not_ a drop-in replacement for `StringBuilder`. Its single contiguous buffer enables `Span<char>` access and in-place regex operations, but growing copies the entire buffer. See the [wiki Examples page](wiki/Examples.md) for guidance on when to choose `StringWeaver` vs `StringBuilder`.
+
 # Consumption
 
 The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions:
@@ -14,7 +16,7 @@ Unfortunately, neither `PCRE.NET` nor `System.Text.RegularExpressions` expose al
 
 # Variants
 
-For some usage examples, refer to `examples.md`.
+For some usage examples, refer to the [wiki Examples page](wiki/Examples.md).
 
 ## General purpose
 
@@ -48,7 +50,7 @@ Namespace: `global::StringWeaver.Specialized`
 * &#x26A0; `StringWeaver.ToString` (the base version) is `sealed override`.
 * `IBufferWriter<char>` implementations as well as `Stream` and `TextWriter` support through wrappers are both handled internally as well. Do not re-implement any of those.
 
-Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
+Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. `Start` and `End` control which portion of the buffer is considered "used"; `Length` is computed from these.
 
 &#x26A0; The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
 
