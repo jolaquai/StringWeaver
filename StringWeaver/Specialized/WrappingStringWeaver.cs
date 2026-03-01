@@ -36,7 +36,7 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
         if (length <= 0)
         {
             // length == 0 is disallowed because it would give the caller a completely useless instance that just holds onto a pinned array for no reason
-            throw new ArgumentOutOfRangeException(nameof(length), $"Length ({length}) must be non-negative.");
+            throw new ArgumentOutOfRangeException(nameof(length), $"Length ({length}) must be positive.");
         }
 
         // Check totalLength AFTER length, otherwise the delegating ctor chains could throw misleading exceptions
