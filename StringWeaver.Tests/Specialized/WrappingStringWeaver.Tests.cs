@@ -124,6 +124,18 @@ public class WrappingStringWeaverTests
     }
 
     [Fact]
+    public void Constructor_Memory_WithUsedLengthGreaterThanSliceLength_ThrowsArgumentOutOfRangeException()
+    {
+        // Regression: ValidateRangeForZeroBasedLength compared usedLength against totalLength (the
+        // full memory.Length) instead of the slice length, so this silently passed when usedLength
+        // exceeded the slice but not the total buffer.
+        var buffer = new char[100];
+        var memory = new Memory<char>(buffer);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new WrappingStringWeaver(memory, index: 90, length: 5, usedLength: 6));
+    }
+
+    [Fact]
     public void Constructor_Memory_WithNegativeIndex_ThrowsArgumentOutOfRangeException()
     {
         var buffer = new char[100];

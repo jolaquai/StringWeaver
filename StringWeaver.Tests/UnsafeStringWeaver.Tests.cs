@@ -134,7 +134,7 @@ public sealed class UnsafeStringWeaverTests
     }
 
     [Fact]
-    public void FullMemory_ReturnsMemoryOverEntireBuffer()
+    public void UsableMemory_ReturnsMemoryOverUsableBuffer()
     {
         var weaver = new UnsafeStringWeaver("Test", 2048);
 
