@@ -29,7 +29,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageDescription>Exposes a custom high-performance builder for strings with a mutable, directly accessible buffer and a versatile API for manipulating the contents.</PackageDescription>
     <PackageTags>string;stringbuilder;performance;buffer;mutable string</PackageTags>
-    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <PackageReadmeFile>readme.md</PackageReadmeFile>
 
     <IncludeSymbols>true</IncludeSymbols>
@@ -67,7 +67,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\README.md;..\LICENSE" Pack="True" PackagePath="/" />
+    <None Include="..\readme.md;..\LICENSE" Pack="True" PackagePath="/" />
   </ItemGroup>
 
 </Project>
