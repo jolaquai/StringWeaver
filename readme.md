@@ -1,5 +1,7 @@
 The `StringWeaver` package exposes a custom high-performance builder for `string`s with a mutable, directly accessible buffer and a versatile API for manipulating the contents.
 
+> **Note:** `StringWeaver` is _not_ a drop-in replacement for `StringBuilder`. Its single contiguous buffer enables `Span<char>` access and in-place regex operations, but growing copies the entire buffer. See the [wiki Examples page](wiki/Examples.md) for guidance on when to choose `StringWeaver` vs `StringBuilder`.
+
 # Consumption
 
 The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions:

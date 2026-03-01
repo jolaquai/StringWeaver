@@ -1,8 +1,12 @@
-`StringWeaver` is designed to be as close to a drop-in replacement as possible for any situation where your first instinct would be to use a `StringBuilder`.
+`StringWeaver` is a high-performance mutable string builder with a contiguous buffer and a vastly expanded manipulation API compared to `StringBuilder`.
+
+> **`StringWeaver` is _not_ a drop-in replacement for `StringBuilder`.**
+> `StringBuilder` internally uses a linked list of `char[]` chunks, so appending never copies existing data. `StringWeaver` stores its content in a single contiguous `char[]` (or unmanaged buffer). This is what enables direct `Span<char>` access and in-place regex matching/replacement, but it means that **growing the buffer requires copying the entire contents to a new allocation**. For workloads that are purely append-heavy with unpredictable final size, `StringBuilder` may use less memory overall. `StringWeaver` earns its keep when you need to _manipulate_ the buffer after building it — trimming, replacing, regex-matching, slicing — without allocating intermediate strings.
 
 Some feature highlights include:
-* Highly efficient memory usage through the use of slicing instead of memory copies where possible.
-* A significantly expanded set of methods for in-place replacement, often with zero additional allocations.
+* Direct `Span<char>` / `Memory<char>` access to the contiguous buffer, enabling zero-copy reads and in-place mutation.
+* In-place regex replacement via both PCRE and `System.Text.RegularExpressions`, which require the contiguous buffer that `StringBuilder` cannot provide.
+* A significantly expanded set of methods for in-place replacement, removal and trimming, often with zero additional allocations.
 * Extensive API support through custom-built `TextWriter`, `Stream` and `IBufferWriter<char>` implementations.
 
 Consider the `Replace` set of methods in `StringBuilder`:
@@ -63,12 +67,14 @@ The following alias definitions can be used to make referring to `StringWeaver.S
 
 ## When to use StringWeaver
 
-`StringWeaver` shines wherever you'd normally reach for `StringBuilder`, `StringWriter`, or repeated `string.Concat`/interpolation in a loop. Some concrete scenarios:
+`StringWeaver` is designed for workloads where you need to **manipulate** buffer contents after (or during) construction — not just append. Some concrete scenarios where it outperforms `StringBuilder` or raw string operations:
 
-* **Building large text output** — log formatters, code generators, template engines, report builders.
-* **In-place text manipulation** — trimming, replacing, removing substrings without allocating intermediate strings.
+* **In-place text manipulation** — trimming, replacing, removing substrings, regex match/replace — all without allocating intermediate strings. This is the primary reason to choose `StringWeaver`.
+* **Direct `Span<char>` / `Memory<char>` access** — zero-copy reads and writes into the buffer; impossible with `StringBuilder`'s chunked storage.
 * **Interop with `TextWriter`/`Stream`/`IBufferWriter<char>` APIs** — pass a single `StringWeaver` to APIs that expect any of these abstractions.
-* **High-throughput hot paths** — `StringWeaver` avoids the copy-on-grow penalty that `StringBuilder` pays and supports direct `Span<char>` access for zero-copy reads.
+* **Building text with known or bounded size** — when you can estimate capacity up-front, `StringWeaver`'s contiguous buffer avoids the overhead of `StringBuilder`'s linked-list bookkeeping.
+
+Conversely, if your workload is **purely append-heavy with unpredictable final size** (e.g. streaming log lines of unknown total length), `StringBuilder` may be a better fit: its linked-list-of-chunks design means appending never copies existing data, while `StringWeaver` must copy the entire buffer to a new allocation on grow.
 
 ## Replacing typical bad code patterns
 
