@@ -9,8 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		Directory.Build.props = Directory.Build.props
 		global.json = global.json
-		StringWeaver\readme.md = StringWeaver\readme.md
-		unlicense.md = unlicense.md
+		README.md = README.md
+		LICENSE = LICENSE
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StringWeaver.Tests", "StringWeaver.Tests\StringWeaver.Tests.csproj", "{5D63EC7D-F9B5-45BF-A661-9615C1EC7388}"
