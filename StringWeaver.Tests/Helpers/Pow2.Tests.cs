@@ -26,7 +26,7 @@ public class Pow2Tests
     {
         var td = new TheoryData<long, long>
         {
-            { 1, 2 }
+            { 1, 1 }
         };
         for (var i = 0; i < Int64Bits - 1; i++)
         {

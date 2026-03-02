@@ -116,7 +116,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
 
         var previousSize = CapacityBytes;
 
-        var newSize = Pow2.NextPowerOf2(requiredCapacity * (long)_sizeOfT);
+        var newSize = Math.Max(previousSize, Pow2.NextPowerOf2(requiredCapacity * (long)_sizeOfT));
 
         if (newSize == 0 && requiredCapacity > 0)
         {

@@ -46,7 +46,10 @@ public readonly struct StringWeaverFormatHandler
                 _weaver.Append(formattable.ToString(format, _formatProvider));
                 break;
             default:
-                _weaver.Append(value?.ToString());
+                if (value is not null)
+                {
+                    _weaver.Append(value.ToString());
+                }
                 break;
         }
     }
