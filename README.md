@@ -7,12 +7,12 @@ The `StringWeaver` package exposes a custom high-performance builder for `string
 The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions:
 
 * Core functionality is exposed in the `netstandard2.0` compilation, meaning any conforming project platform can use it.
-* A dependency on `PCRE.NET` is introduced to facilitate all regex operations on `StringWeaver` to meet performance goals/allocation minimums for `< net7.0`.
+* A dependency on `PCRE.NET` is used across **all** targets to facilitate regex operations on `StringWeaver` without requiring allocations for match details. This is the primary regex engine.
 * Several quality-of-life APIs are also introduced in their respective compilations, such as support for `ISpanFormattable` on `>= net6.0`.
-* For `>= net7.0`, for the `Replace*` methods that take a `PcreRegex`, analogous methods that take `Regex` instance and utilize the Span-based APIs introduced in `System.Text.RegularExpressions` are also exposed.
+* For `>= net7.0`, for the `Replace*` and `EnumerateIndicesOf*` methods that take a `PcreRegex`, analogous methods that take a `Regex` instance and utilize the Span-based APIs introduced in `System.Text.RegularExpressions` are also exposed.
 * `net8.0` introduced many `Span`-based APIs throughout the entire .NET ecosystem, allowing streamlined code paths on `>= net8.0`.
 
-Unfortunately, neither `PCRE.NET` nor `System.Text.RegularExpressions` expose allocating APIs that would easily allow producing match details object instances using a `Span` input. This also means that typical (allocating) replacement operations that allow dynamically producing replacement content using a `MatchEvaluator` cannot be implemented.
+Neither `PCRE.NET` nor `System.Text.RegularExpressions` expose APIs that produce allocating match-details objects from a `Span` input. As a result, the traditional `MatchEvaluator` delegate pattern is not supported. Instead, `StringWeaver` exposes the `StringWeaverWriter` delegate (`void(Span<char> buffer, ReadOnlySpan<char> match)`) together with a `bufferSize` parameter, which allows dynamically generating replacement content with zero allocations.
 
 # Variants
 

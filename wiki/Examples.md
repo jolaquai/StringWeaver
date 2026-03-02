@@ -165,13 +165,13 @@ var sw = new SW("Hello World, Hello Earth");
 int idx = sw.IndexOf('W');          // 6
 int idx2 = sw.IndexOf("Hello");    // 0
 
-// Scoped search: start at index 7, search 10 chars
+// Scoped search: start at index 7, search 17 chars
 int idx3 = sw.IndexOf("Hello", 7, 17); // 13
 
-// Enumerate ALL indices of a char (zero-alloc with ref struct enumerator)
+// Enumerate ALL indices of a char (stable — throws if buffer modified during enumeration)
 foreach (var i in sw.EnumerateIndicesOf('l'))
 {
-    // yields: 2, 3, 16, 17
+    // yields: 2, 3, 9, 15, 16
 }
 
 // Enumerate indices of a substring
@@ -210,7 +210,7 @@ sw.Replace(6, 5, "Earth".AsSpan()); // "Hello Earth"
 
 // Scoped replacement: only within a substring
 sw = new SW("aaXXaa");
-sw.ReplaceAll("aa", "BB", 2, 4);   // first "aa" untouched: "aaBBaa" — wait, only the region [2..6) = "XXaa" is searched
+sw.ReplaceAll("aa", "BB", 2, 4);   // searches region [2..6) = "XXaa"; "aa" found at index 4 → "aaXXBB"
 ```
 
 ## PcreRegex
@@ -329,7 +329,7 @@ sw.CopyTo(dest);
 var arr = new char[sw.Length];
 sw.CopyTo(arr, 0);
 
-// Copy a block (substring) to a TextWriter
+// Copy a block (substring) to a TextWriter (NET6+ only)
 using var writer = new StreamWriter("out.txt");
 sw.CopyBlock(0, 5, writer);   // writes "Hello"
 
