@@ -43,16 +43,25 @@ internal sealed class WeaverTextWriter : TextWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(long value) => _weaver.Append(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Write(object value) => _weaver.Append(value?.ToString());
+    public override void Write(object value)
+    {
+        if (value is null) return;
+        _weaver.Append(value.ToString());
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(ReadOnlySpan<char> buffer) => _weaver.Append(buffer);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(float value) => _weaver.Append(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Write(string value) => _weaver.Append(value);
+    public override void Write(string value)
+    {
+        if (value is null) return;
+        _weaver.Append(value);
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(StringBuilder value)
     {
+        if (value is null) return;
         foreach (var chunk in value.GetChunks())
         {
             _weaver.Append(chunk.Span);

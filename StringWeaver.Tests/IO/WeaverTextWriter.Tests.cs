@@ -714,4 +714,15 @@ public class WeaverTextWriterTests
 
         Assert.Equal("", weaver.ToString());
     }
+
+    [Fact]
+    public void Write_NullStringBuilder_DoesNotThrow()
+    {
+        var weaver = new StringWeaver();
+        var writer = weaver.GetTextWriter();
+
+        writer.Write((StringBuilder)null);
+
+        Assert.Equal("", weaver.ToString());
+    }
 }
