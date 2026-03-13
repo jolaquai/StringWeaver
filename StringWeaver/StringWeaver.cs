@@ -81,9 +81,13 @@ public partial class StringWeaver : IBufferWriter<char>
 
                 foreach (var vm in _regex.EnumerateMatches(_weaver.Span, nextSearchIndex))
                 {
-                    Current = vm.Index;
-                    nextSearchIndex = vm.Index + vm.Length;
-                    return true;
+                    if (vm.Index + vm.Length <= _searchEnd)
+                    {
+                        Current = vm.Index;
+                        nextSearchIndex = vm.Index + vm.Length;
+                        return true;
+                    }
+                    break;
                 }
             }
             else
@@ -130,7 +134,7 @@ public partial class StringWeaver : IBufferWriter<char>
             nextSearchIndex = start;
             _version = weaver.Version;
 
-            _searchEnd = start + length;
+            _searchEnd = length == -1 ? _weaver.End : start + length;
         }
 
 #if NET7_0_OR_GREATER
@@ -647,8 +651,17 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see cref="char"/> to append.</param>
     /// <param name="count">The number of times to append <paramref name="value"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="count"/> is negative.</exception>
     public void Append(char value, int count)
     {
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Count must not be negative.");
+        }
+        if (count == 0)
+        {
+            return;
+        }
         Version++;
         GetWritableSpan(count)[..count].Fill(value);
         Expand(count);
@@ -686,6 +699,7 @@ public partial class StringWeaver : IBufferWriter<char>
     {
         if (value.Length == 0)
         {
+            AppendLine();
             return;
         }
         var destination = GetWritableSpan(value.Length + _platformNewLineLength);
@@ -711,13 +725,28 @@ public partial class StringWeaver : IBufferWriter<char>
     /// </summary>
     /// <param name="value">The <see cref="string"/> to append.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Append(object value) => Append(value.ToString().AsSpan());
+    public void Append(object value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+        Append(value.ToString().AsSpan());
+    }
     /// <summary>
     /// Appends an <see langword="object"/>'s <see langword="string"/> representation followed by the current environment's default line terminator to the end of the buffer.
     /// </summary>
     /// <param name="value">The <see cref="string"/> to append.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AppendLine(object value) => AppendLine(value.ToString().AsSpan());
+    public void AppendLine(object value)
+    {
+        if (value is null)
+        {
+            AppendLine();
+            return;
+        }
+        AppendLine(value.ToString().AsSpan());
+    }
 
 #if !NETSTANDARD2_0
 #pragma warning disable CA1822 // Mark members as static

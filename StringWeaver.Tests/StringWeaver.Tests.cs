@@ -2151,6 +2151,80 @@ public class StringWeaverTests
         Assert.Equal(0, sw.Length);
     }
 
+    [Fact]
+    public void AppendLine_EmptySpan_AppendsNewLineOnly()
+    {
+        var sw = new SW();
+        sw.AppendLine(ReadOnlySpan<char>.Empty);
+        Assert.Equal(Environment.NewLine, sw.ToString());
+    }
+
+    [Fact]
+    public void AppendLine_EmptyString_AppendsNewLineOnly()
+    {
+        var sw = new SW();
+        sw.AppendLine("");
+        Assert.Equal(Environment.NewLine, sw.ToString());
+    }
+
+    [Fact]
+    public void Append_NullObject_IsNoOp()
+    {
+        var sw = new SW("existing");
+        sw.Append((object)null);
+        Assert.Equal("existing", sw.ToString());
+    }
+
+    [Fact]
+    public void AppendLine_NullObject_AppendsNewLineOnly()
+    {
+        var sw = new SW();
+        sw.AppendLine((object)null);
+        Assert.Equal(Environment.NewLine, sw.ToString());
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_Regex_RespectsSearchRange()
+    {
+        // "aa" matches at index 0, 2, 4 in "aaaaaa"
+        // With range (0, 4), only matches at 0 and 2 should be returned (match at 2 ends at 4)
+        var sw = new SW("aaaaaa");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new Regex("aa"), 0, 4))
+        {
+            indices.Add(idx);
+        }
+        Assert.Equal([0, 2], indices);
+    }
+
+    [Fact]
+    public void EnumerateIndicesOfUnsafe_Regex_ExcludesMatchBeyondRange()
+    {
+        // "abc" at index 3 extends to 6, which is beyond range (0, 5)
+        var sw = new SW("abcabc");
+        var indices = new List<int>();
+        foreach (var idx in sw.EnumerateIndicesOfUnsafe(new Regex("abc"), 0, 5))
+        {
+            indices.Add(idx);
+        }
+        Assert.Equal([0], indices);
+    }
+
+    [Fact]
+    public void Append_CharCount_NegativeCount_Throws()
+    {
+        var sw = new SW();
+        Assert.Throws<ArgumentOutOfRangeException>(() => sw.Append('x', -1));
+    }
+
+    [Fact]
+    public void Append_CharCount_ZeroCount_IsNoOp()
+    {
+        var sw = new SW("test");
+        sw.Append('x', 0);
+        Assert.Equal("test", sw.ToString());
+    }
+
     #endregion
 
     #region Append(char, count) Tests
