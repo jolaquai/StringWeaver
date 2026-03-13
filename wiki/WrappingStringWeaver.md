@@ -49,6 +49,7 @@ unsafe
 // From a ref char (unsafe, reinterpret any memory as char buffer)
 unsafe
 {
+    // array.Length must be >= 11, otherwise you're dereferencing memory you don't own!
     ref char r = ref array[0];
     var w7 = new WrappingStringWeaver(ref r, length: array.Length, usedLength: 11);
 }
