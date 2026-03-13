@@ -137,6 +137,8 @@ var sw = new SW();
 sw.Append("Hello");
 sw.Append(' ');
 sw.Append('!', 3);            // "Hello !!!"
+sw.Append('x', 0);            // no-op (count == 0)
+// sw.Append('x', -1);        // throws ArgumentOutOfRangeException
 
 // Spans (zero-copy)
 ReadOnlySpan<char> span = " World".AsSpan();
@@ -154,6 +156,10 @@ sw.Append($"Welcome to {name}!");
 // AppendLine variants mirror every Append overload
 sw.AppendLine();               // newline only
 sw.AppendLine("Done.");        // "Done.\r\n" (or "\n" on Unix)
+sw.AppendLine("");             // empty string: newline only (same as AppendLine())
+sw.AppendLine(ReadOnlySpan<char>.Empty);  // empty span: newline only
+sw.AppendLine((object)null);   // null object: newline only (no-op on content)
+sw.Append((object)null);       // null object: no-op (neither appends nor throws)
 ```
 
 ## IndexOf/IndicesOf
@@ -178,6 +184,13 @@ foreach (var i in sw.EnumerateIndicesOf('l'))
 foreach (var i in sw.EnumerateIndicesOf("Hello".AsSpan()))
 {
     // yields: 0, 13
+}
+
+// Enumerate with a search range (index, length) — respects range boundary
+// EnumerateIndicesOfUnsafe does NOT throw on buffer modification (use with caution)
+foreach (var i in sw.EnumerateIndicesOfUnsafe("l", 0, 10))
+{
+    // yields: 2, 3, 9 (only indices where match is entirely within [0..10))
 }
 
 // IndexOfAny / IndexOfAnyExcept (NET8+ supports SearchValues<char>)
@@ -329,7 +342,7 @@ sw.CopyTo(dest);
 var arr = new char[sw.Length];
 sw.CopyTo(arr, 0);
 
-// Copy a block (substring) to a TextWriter (NET6+ only)
+// Copy a block (substring) to a TextWriter
 using var writer = new StreamWriter("out.txt");
 sw.CopyBlock(0, 5, writer);   // writes "Hello"
 

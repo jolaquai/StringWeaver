@@ -21,4 +21,3 @@ This benchmark compares the performance of `string.Replace` chained `N` times ve
 | SW_ReplaceAll  | 10000 | 302,120.9 ns |  1.99 | 71.2891 | 71.2891 | 71.2891 |  311208 B |        3.11 |
 | SB_Replace     | 10000 | 169,580.3 ns |  1.12 | 31.0059 | 31.0059 | 31.0059 |  200189 B |        2.00 |
 ```
-```
