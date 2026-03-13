@@ -1,0 +1,5 @@
+<Project>
+    <PropertyGroup>
+        <CoreVersion>2.0.0</CoreVersion>
+    </PropertyGroup>
+</Project>

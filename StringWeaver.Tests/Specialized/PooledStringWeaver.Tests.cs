@@ -10,7 +10,7 @@ public sealed class PooledStringWeaverTests
     private static object GetPrivate(object obj, string name) => obj.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(obj);
     private static void SetPrivate(object obj, string name, object value) => obj.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(obj, value);
 
-    private static MethodInfo GetGrowMethod() => typeof(PooledStringWeaver).GetMethod("Grow", BindingFlags.Instance | BindingFlags.NonPublic)!;
+    private static MethodInfo GetGrowMethod() => typeof(PooledStringWeaver).GetMethod("GrowCore", BindingFlags.Instance | BindingFlags.NonPublic)!;
 
     private sealed class TrackingCharArrayPool : ArrayPool<char>
     {
@@ -59,10 +59,10 @@ public sealed class PooledStringWeaverTests
         var pool = new TrackingCharArrayPool();
         var w = new PooledStringWeaver(4, pool);
 
-        // Set Length = 1 so copy path copies index 0
-        var lengthProp = typeof(PooledStringWeaver).BaseType!.GetProperty("Length", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-        Assert.NotNull(lengthProp);
-        lengthProp!.SetValue(w, 1);
+        // Set End = 1 so copy path copies index 0
+        var endProp = typeof(PooledStringWeaver).BaseType!.GetProperty("End", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        Assert.NotNull(endProp);
+        endProp!.SetValue(w, 1);
 
         // Set first char
         var bufferField = typeof(PooledStringWeaver).GetField("buffer", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -119,6 +119,16 @@ public sealed class PooledStringWeaverTests
         var fullMemoryProp = typeof(PooledStringWeaver).GetProperty("FullMemory", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
         var mem = (Memory<char>)fullMemoryProp.GetValue(w)!;
         Assert.Equal('A', mem.Span[0]);
+    }
+
+    // exists pretty much just to ensure code coverage of Dispose path
+    [Fact]
+    public void Dispose_MultipleCalls_EarlyExit()
+    {
+        var w = new PooledStringWeaver(3);
+
+        w.Dispose();
+        w.Dispose();
     }
 
     [Fact]

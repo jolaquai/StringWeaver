@@ -1,12 +1,15 @@
 ﻿namespace StringWeaver;
 
 /// <summary>
-/// [Experimental] Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
+/// Sibling implementation of <see cref="StringWeaver"/> that sources all backing storage from unmanaged memory to avoid GC pressure for very large buffers.
 /// </summary>
-internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
+public sealed class UnsafeStringWeaver : StringWeaver, IDisposable
 {
     #region const
-    private const int DefaultCapacity = 1024;
+    /// <summary>
+    /// The default capacity of an <see cref="UnsafeStringWeaver"/> instance if none is specified during construction.
+    /// </summary>
+    public new const int DefaultCapacity = 1024;
     #endregion
 
     #region Instance fields
@@ -74,7 +77,7 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
         }
 
         _buffer = new NativeBuffer<char>(capacity);
-        Length = initialContent.Length;
+        End = initialContent.Length;
 
         if (initialContent.Length > 0)
         {
@@ -95,9 +98,8 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
         var span = other.Span;
 
         _buffer = new NativeBuffer<char>(other.Capacity);
-        Length = span.Length;
+        End = span.Length;
 
-        // More efficient than non-generic Array.Copy plus constrained to the occupied Length
         other.Span.CopyTo(Span);
     }
     #endregion
@@ -106,10 +108,12 @@ internal sealed class UnsafeStringWeaver : StringWeaver, IDisposable
     /// Delegates this call to <see cref="_buffer"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected override void Grow(int requiredCapacity) => _buffer.Grow(requiredCapacity);
+    protected override void GrowCore(int requiredCapacity) => _buffer.Grow(requiredCapacity, Start);
 
     #region Cleanup
+    /// <inheritdoc/>
     ~UnsafeStringWeaver() => Dispose();
+    /// <inheritdoc/>
     public void Dispose()
     {
         ((IDisposable)_buffer)?.Dispose();

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 
 using StringWeaver.Helpers;
 
@@ -29,7 +28,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(100);
 
-        var expectedCapacity = global::StringWeaver.Helpers.Pow2.NextPowerOf2(100 * sizeof(byte));
+        var expectedCapacity = Pow2.NextPowerOf2(100 * sizeof(byte));
         Assert.Equal(expectedCapacity, buffer.Capacity);
     }
 
@@ -47,7 +46,7 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(4);
         var initialCapacity = buffer.Capacity;
 
-        buffer.Grow(100);
+        buffer.Grow(100, 0);
 
         Assert.True(buffer.Capacity > initialCapacity);
         Assert.True(buffer.Capacity >= 100);
@@ -59,18 +58,18 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(4);
         var initialVersion = buffer.Version;
 
-        buffer.Grow(100);
+        buffer.Grow(100, 0);
 
         Assert.Equal(initialVersion + 1, buffer.Version);
     }
 
     [Fact]
-    public void Grow_NoParameters_DoublesCapacity()
+    public void Grow_SingleParameter_DoublesCapacity()
     {
         using var buffer = new NativeBuffer<int>(8);
         var initialCapacity = buffer.Capacity;
 
-        buffer.Grow();
+        buffer.Grow(buffer.Capacity + 1, 0);
 
         Assert.True(buffer.Capacity > initialCapacity);
     }
@@ -81,7 +80,7 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(4);
         var initialCapacity = buffer.Capacity;
 
-        buffer.GrowIfNeeded(100);
+        buffer.GrowIfNeeded(100, 0);
 
         Assert.True(buffer.Capacity > initialCapacity);
     }
@@ -93,7 +92,7 @@ public unsafe class NativeBufferTests
         var initialCapacity = buffer.Capacity;
         var initialVersion = buffer.Version;
 
-        buffer.GrowIfNeeded(10);
+        buffer.GrowIfNeeded(10, 0);
 
         Assert.Equal(initialCapacity, buffer.Capacity);
         Assert.Equal(initialVersion, buffer.Version);
@@ -313,7 +312,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<int>(10, pressure: true);
 
-        buffer.Grow(10000);
+        buffer.Grow(10000, 0);
 
         Assert.True(buffer.Capacity >= 10000);
     }
@@ -323,7 +322,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<int>(10, pressure: false);
 
-        buffer.Grow(10000);
+        buffer.Grow(10000, 0);
 
         Assert.True(buffer.Capacity >= 10000);
     }
@@ -333,7 +332,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(10, pressure: null);
 
-        buffer.Grow(20000);
+        buffer.Grow(20000, 0);
 
         Assert.True(buffer.Capacity >= 20000);
     }
@@ -343,7 +342,7 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(10, pressure: null);
 
-        buffer.Grow(100);
+        buffer.Grow(100, 0);
 
         Assert.True(buffer.Capacity >= 100);
     }
@@ -353,8 +352,8 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<byte>(10, pressure: null);
 
-        buffer.Grow(20000);
-        buffer.Grow(40000);
+        buffer.Grow(20000, 0);
+        buffer.Grow(40000, 0);
 
         Assert.True(buffer.Capacity >= 40000);
     }
@@ -365,7 +364,7 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(10);
         var initialPtr = buffer.Pointer;
 
-        buffer.Grow(10000);
+        buffer.Grow(10000, 0);
 
         Assert.NotEqual((nint)initialPtr, (nint)buffer.Pointer);
     }
@@ -376,9 +375,9 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(4);
 
         Assert.Equal(1u, buffer.Version);
-        buffer.Grow(100);
+        buffer.Grow(100, 0);
         Assert.Equal(2u, buffer.Version);
-        buffer.Grow(1000);
+        buffer.Grow(1000, 0);
         Assert.Equal(3u, buffer.Version);
     }
 
@@ -429,7 +428,7 @@ public unsafe class NativeBufferTests
         }
 
         var originalValues = span.ToArray();
-        buffer.Grow(100);
+        buffer.Grow(100, 0);
         span = buffer.GetSpan();
 
         for (var i = 0; i < originalValues.Length; i++)
@@ -459,6 +458,19 @@ public unsafe class NativeBufferTests
     {
         using var buffer = new NativeBuffer<int>(10);
         Assert.False(Accessors<int>.TryGetArray(buffer, out var _));
+    }
+
+    [Fact]
+    public void Grow_WithSmallerRequiredCapacity_DoesNotShrinkCapacity()
+    {
+        using var buffer = new NativeBuffer<int>(100);
+        var initialCapacity = buffer.Capacity;
+
+        // Attempt to grow with a smaller required capacity
+        // This should not shrink the buffer
+        buffer.Grow(50, 0);
+
+        Assert.True(buffer.Capacity >= initialCapacity);
     }
 }
 

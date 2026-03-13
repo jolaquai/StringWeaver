@@ -8,67 +8,67 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
+    <RollForward>LatestMajor</RollForward>
+
     <AnalysisMode>recommended</AnalysisMode>
     <AnalysisModePerformance>all</AnalysisModePerformance>
 
-    <NoWarn>$(NoWarn);CA1510;CA1513</NoWarn>
+    <NoWarn>$(NoWarn);CA1510;CA1513;CA1720</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
-      <AssemblyName>StringWeaver</AssemblyName>
-      <Version>1.1.0</Version>
-      <AssemblyVersion>$(Version)</AssemblyVersion>
-      <FileVersion>$(Version)</FileVersion>
-      <IsPackable>True</IsPackable>
-      <PackageId>StringWeaver</PackageId>
-      <Authors>jolaquai</Authors>
-      <PackageProjectUrl>https://github.com/jolaquai/StringWeaver</PackageProjectUrl>
-      <RepositoryUrl>https://github.com/jolaquai/StringWeaver</RepositoryUrl>
-      <RepositoryType>git</RepositoryType>
-      <PackageTags>string;stringbuilder;performance;buffer</PackageTags>
-      <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
-      <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <AssemblyName>StringWeaver</AssemblyName>
+    <Version>$(CoreVersion)</Version>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
+    <IsPackable>True</IsPackable>
+    <PackageId>$(AssemblyName)</PackageId>
+    <Authors>jolaquai</Authors>
+    <PackageProjectUrl>https://github.com/jolaquai/StringWeaver</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/jolaquai/StringWeaver</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageDescription>Exposes a custom high-performance builder for strings with a mutable, directly accessible buffer and a versatile API for manipulating the contents.</PackageDescription>
+    <PackageTags>string;stringbuilder;performance;buffer;mutable string</PackageTags>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
-      <IncludeSymbols>true</IncludeSymbols>
-      <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   
-      <EmbedUntrackedSources>true</EmbedUntrackedSources>
-      <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
   
-      <Deterministic>true</Deterministic>
+    <Deterministic>true</Deterministic>
 
-      <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">True</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-      <PackageReference Include="System.Buffers" Version="4.6.1" />
-      <PackageReference Include="System.Memory" Version="4.6.3" />
-      <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.0" />
+    <PackageReference Include="System.Buffers" Version="4.6.1" />
+    <PackageReference Include="System.Memory" Version="4.6.3" />
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.5" />
   </ItemGroup>
   <ItemGroup>
-      <PackageReference Include="PCRE.NET" Version="1.3.0" />
-      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="PCRE.NET" Version="1.4.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.201" PrivateAssets="All" />
 
-      <InternalsVisibleTo Include="StringWeaver.Tests" />
+    <InternalsVisibleTo Include="StringWeaver.Tests" />
 
-      <Using Include="System.Buffers" />
-      <Using Include="System.Diagnostics" />
-      <Using Include="System.Runtime.CompilerServices" />
-      <Using Include="System.Runtime.InteropServices" />
-      <Using Include="System.Text" />
-      <Using Include="System.Text.RegularExpressions" />
+    <Using Include="System.Buffers" />
+    <Using Include="System.Diagnostics" />
+    <Using Include="System.Runtime.CompilerServices" />
+    <Using Include="System.Runtime.InteropServices" />
+    <Using Include="System.Text" />
+    <Using Include="System.Text.RegularExpressions" />
 
-      <Using Include="StringWeaver" />
-      <Using Include="StringWeaver.IO" />
-      <Using Include="StringWeaver.Helpers" />
+    <Using Include="StringWeaver" />
+    <Using Include="StringWeaver.IO" />
+    <Using Include="StringWeaver.Helpers" />
   </ItemGroup>
 
   <ItemGroup>
-      <None Include="readme.md" Pack="True" PackagePath="\" />
+    <None Include="..\README.md;..\LICENSE" Pack="True" PackagePath="/" />
   </ItemGroup>
-  <!-- Copy readme.md from this project's directory into the solution directory -->
-  <Target Name="GlobalizeReadmeMd" BeforeTargets="Pack;Build">
-      <Copy ContinueOnError="WarnAndContinue" Retries="3" OverwriteReadOnlyFiles="True" SourceFiles="$(MSBuildProjectDirectory)\readme.md" DestinationFolder="$(SolutionDir)" />
-  </Target>
 
 </Project>

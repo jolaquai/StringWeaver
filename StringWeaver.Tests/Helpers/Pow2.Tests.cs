@@ -24,7 +24,10 @@ public class Pow2Tests
     }
     public static TheoryData<long, long> Int64TheoryDataFactory()
     {
-        var td = new TheoryData<long, long>();
+        var td = new TheoryData<long, long>
+        {
+            { 1, 1 }
+        };
         for (var i = 0; i < Int64Bits - 1; i++)
         {
             var val = (1L << i) + 1;

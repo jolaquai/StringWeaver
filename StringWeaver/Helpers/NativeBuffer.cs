@@ -88,10 +88,10 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     /// <param name="pressure">Whether to inform the <see cref="GC"/> about unmanaged memory pressure incurred by allocations made by this instance. If <see langword="null"/>, this is decided dynamically based on the size of allocations.</param>
     public NativeBuffer(int count, bool wipeOnDispose = false, bool? pressure = null)
     {
-        // This is safe to do since ReAllocHGlobal just delegates to AllocHGlobal when passed a nullptr for the "previous" pointer
-        Grow(count);
         _wipeOnDispose = wipeOnDispose;
         _pressure = pressure;
+        // This is safe to do since ReAllocHGlobal just delegates to AllocHGlobal when passed a nullptr for the "previous" pointer
+        Grow(count, 0);
     }
 
     #region Grow
@@ -99,31 +99,47 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
     /// Grows the underlying memory block if <paramref name="requiredCapacity"/> exceeds the current capacity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void GrowIfNeeded(int requiredCapacity)
+    public void GrowIfNeeded(int requiredCapacity, int startIndex)
     {
-        if (requiredCapacity > Capacity)
+        if (requiredCapacity > Capacity - startIndex)
         {
-            Grow(requiredCapacity);
+            Grow(requiredCapacity, startIndex);
         }
     }
-    /// <summary>
-    /// Reallocates the underlying memory block unconditionally, ensuring at least twice the previous capacity (if possible).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Grow() => Grow(Capacity + 1);
     /// <summary>
     /// Reallocates the underlying memory block unconditionally, ensuring it can accommodate at least <paramref name="requiredCapacity"/> instances of <typeparamref name="T"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public void Grow(int requiredCapacity)
+    public void Grow(int requiredCapacity, int startIndex)
     {
         Version++;
 
         var previousSize = CapacityBytes;
 
-        var newSize = Pow2.NextPowerOf2(requiredCapacity * (long)_sizeOfT);
-        Pointer = (T*)Marshal.ReAllocHGlobal(PointerValue, (nint)newSize);
+        var newSize = Math.Max(previousSize, Pow2.NextPowerOf2(requiredCapacity * (long)_sizeOfT));
 
+        if (newSize == 0 && requiredCapacity > 0)
+        {
+            throw new InvalidOperationException("Required capacity overflows the maximum allocatable size.");
+        }
+
+        if (newSize == 0)
+        {
+            // Zero-capacity buffer, nothing to allocate
+            Capacity = 0;
+            return;
+        }
+
+        var newAlloc = (T*)Marshal.AllocHGlobal((nint)newSize);
+
+        if (Pointer != _nullPtr)
+        {
+            var span = new Span<T>(newAlloc, (int)(newSize / _sizeOfT));
+            Memory.Span[startIndex..].CopyTo(span);
+            Marshal.FreeHGlobal((nint)Pointer);
+        }
+
+        Pointer = newAlloc;
         Capacity = (int)(newSize / _sizeOfT);
 
         var allocDiff = newSize - previousSize;
@@ -222,6 +238,7 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
         }
 
         var ptr = PointerValue;
+        var capBytes = CapacityBytes;
 
         if (pinCount == 0)
         {
@@ -231,6 +248,16 @@ internal sealed unsafe class NativeBuffer<T> : MemoryManager<T> where T : unmana
         }
 
         disposed = true;
+
+        // Remove memory pressure that was added during Grow calls
+        if (lastGrowReportedPressure && capBytes > 0)
+        {
+            GC.RemoveMemoryPressure(capBytes);
+        }
+        else if (_pressure == true && capBytes > 0)
+        {
+            GC.RemoveMemoryPressure(capBytes);
+        }
         // If we didn't dispose, the last Unpin call is now responsible for that
     }
     protected override bool TryGetArray(out ArraySegment<T> segment)
