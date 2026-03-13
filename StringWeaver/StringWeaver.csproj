@@ -29,8 +29,9 @@
     <RepositoryType>git</RepositoryType>
     <PackageDescription>Exposes a custom high-performance builder for strings with a mutable, directly accessible buffer and a versatile API for manipulating the contents.</PackageDescription>
     <PackageTags>string;stringbuilder;performance;buffer;mutable string</PackageTags>
-    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
-    <PackageReadmeFile>readme.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

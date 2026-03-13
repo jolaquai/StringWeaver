@@ -55,9 +55,9 @@ public unsafe class WrappingStringWeaver : StringWeaver, IDisposable
             throw new ArgumentOutOfRangeException(nameof(length), $"Index + Length ({index} + {length} = {index + length}) must be within the bounds of the provided memory (Length: {totalLength}).");
         }
 
-        if (usedLength > totalLength)
+        if (usedLength > length)
         {
-            throw new ArgumentOutOfRangeException(nameof(usedLength), $"Used Length ({usedLength}) cannot be greater than the total length of the provided memory ({totalLength}).");
+            throw new ArgumentOutOfRangeException(nameof(usedLength), $"Used Length ({usedLength}) cannot be greater than the slice length ({length}).");
         }
     }
 

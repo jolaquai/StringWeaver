@@ -2962,7 +2962,7 @@ public partial class StringWeaver : IBufferWriter<char>
         }
         if (start > 0)
         {
-            Start = start;
+            Start += start;
             return;
         }
     }

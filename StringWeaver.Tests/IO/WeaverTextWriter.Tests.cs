@@ -11,16 +11,16 @@ public class WeaverTextWriterTests
         var writer = weaver.GetTextWriter();
 
         Assert.NotNull(writer);
-        Assert.Null(writer.Encoding);
+        Assert.Equal(Encoding.Unicode, writer.Encoding);
     }
 
     [Fact]
-    public void Encoding_ReturnsNull()
+    public void Encoding_ReturnsUnicodeEncoding()
     {
         var weaver = new StringWeaver();
         var writer = weaver.GetTextWriter();
 
-        Assert.Null(writer.Encoding);
+        Assert.Equal(Encoding.Unicode, writer.Encoding);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class WeaverTextWriterTests
 
         writer.Write(123.45m);
 
-        Assert.Equal("123.45", weaver.ToString());
+        Assert.Equal(123.45m.ToString(), weaver.ToString());
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class WeaverTextWriterTests
 
         writer.Write(3.14159);
 
-        Assert.Contains("3.14159", weaver.ToString());
+        Assert.Equal(3.14159.ToString(), weaver.ToString());
     }
 
     [Fact]
@@ -711,6 +711,17 @@ public class WeaverTextWriterTests
         var writer = weaver.GetTextWriter();
 
         writer.Write((string)null);
+
+        Assert.Equal("", weaver.ToString());
+    }
+
+    [Fact]
+    public void Write_NullStringBuilder_DoesNotThrow()
+    {
+        var weaver = new StringWeaver();
+        var writer = weaver.GetTextWriter();
+
+        writer.Write((StringBuilder)null);
 
         Assert.Equal("", weaver.ToString());
     }

@@ -459,6 +459,19 @@ public unsafe class NativeBufferTests
         using var buffer = new NativeBuffer<int>(10);
         Assert.False(Accessors<int>.TryGetArray(buffer, out var _));
     }
+
+    [Fact]
+    public void Grow_WithSmallerRequiredCapacity_DoesNotShrinkCapacity()
+    {
+        using var buffer = new NativeBuffer<int>(100);
+        var initialCapacity = buffer.Capacity;
+
+        // Attempt to grow with a smaller required capacity
+        // This should not shrink the buffer
+        buffer.Grow(50, 0);
+
+        Assert.True(buffer.Capacity >= initialCapacity);
+    }
 }
 
 internal static class Accessors<T> where T : unmanaged

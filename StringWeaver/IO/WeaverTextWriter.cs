@@ -18,9 +18,9 @@ internal sealed class WeaverTextWriter : TextWriter
     }
 
     /// <summary>
-    /// Always returns <see langword="null"/> since <see langword="char"/>s are written to the underlying <see cref="StringWeaver"/> directly.
+    /// Returns <see cref="Encoding.Unicode"/> since <see langword="char"/>s are written to the underlying <see cref="StringWeaver"/> directly.
     /// </summary>
-    public override Encoding Encoding { get; }
+    public override Encoding Encoding { get; } = Encoding.Unicode;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Flush() { }
@@ -43,16 +43,25 @@ internal sealed class WeaverTextWriter : TextWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(long value) => _weaver.Append(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Write(object value) => _weaver.Append(value?.ToString());
+    public override void Write(object value)
+    {
+        if (value is null) return;
+        _weaver.Append(value.ToString());
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(ReadOnlySpan<char> buffer) => _weaver.Append(buffer);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(float value) => _weaver.Append(value);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override void Write(string value) => _weaver.Append(value);
+    public override void Write(string value)
+    {
+        if (value is null) return;
+        _weaver.Append(value);
+    }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Write(StringBuilder value)
     {
+        if (value is null) return;
         foreach (var chunk in value.GetChunks())
         {
             _weaver.Append(chunk.Span);

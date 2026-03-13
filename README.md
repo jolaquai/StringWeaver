@@ -1,20 +1,22 @@
 The `StringWeaver` package exposes a custom high-performance builder for `string`s with a mutable, directly accessible buffer and a versatile API for manipulating the contents.
 
+> **Note:** `StringWeaver` is _not_ a drop-in replacement for `StringBuilder`. Its single contiguous buffer enables `Span<char>` access and in-place regex operations, but growing copies the entire buffer. See the [wiki Examples page](wiki/Examples.md) for guidance on when to choose `StringWeaver` vs `StringBuilder`.
+
 # Consumption
 
 The assembly multi-targets `netstandard2.0` and several newer .NETs to support performance-focused APIs introduced in later versions:
 
 * Core functionality is exposed in the `netstandard2.0` compilation, meaning any conforming project platform can use it.
-* A dependency on `PCRE.NET` is introduced to facilitate all regex operations on `StringWeaver` to meet performance goals/allocation minimums for `< net7.0`.
+* A dependency on `PCRE.NET` is used across **all** targets to facilitate regex operations on `StringWeaver` without requiring allocations for match details. This is the primary regex engine.
 * Several quality-of-life APIs are also introduced in their respective compilations, such as support for `ISpanFormattable` on `>= net6.0`.
-* For `>= net7.0`, for the `Replace*` methods that take a `PcreRegex`, analogous methods that take `Regex` instance and utilize the Span-based APIs introduced in `System.Text.RegularExpressions` are also exposed.
+* For `>= net7.0`, for the `Replace*` and `EnumerateIndicesOf*` methods that take a `PcreRegex`, analogous methods that take a `Regex` instance and utilize the Span-based APIs introduced in `System.Text.RegularExpressions` are also exposed.
 * `net8.0` introduced many `Span`-based APIs throughout the entire .NET ecosystem, allowing streamlined code paths on `>= net8.0`.
 
-Unfortunately, neither `PCRE.NET` nor `System.Text.RegularExpressions` expose allocating APIs that would easily allow producing match details object instances using a `Span` input. This also means that typical (allocating) replacement operations that allow dynamically producing replacement content using a `MatchEvaluator` cannot be implemented.
+Neither `PCRE.NET` nor `System.Text.RegularExpressions` expose APIs that produce allocating match-details objects from a `Span` input. As a result, the traditional `MatchEvaluator` delegate pattern is not supported. Instead, `StringWeaver` exposes the `StringWeaverWriter` delegate (`void(Span<char> buffer, ReadOnlySpan<char> match)`) together with a `bufferSize` parameter, which allows dynamically generating replacement content with zero allocations.
 
 # Variants
 
-For some usage examples, refer to `examples.md`.
+For some usage examples, refer to the [wiki Examples page](wiki/Examples.md).
 
 ## General purpose
 
@@ -48,7 +50,7 @@ Namespace: `global::StringWeaver.Specialized`
 * &#x26A0; `StringWeaver.ToString` (the base version) is `sealed override`.
 * `IBufferWriter<char>` implementations as well as `Stream` and `TextWriter` support through wrappers are both handled internally as well. Do not re-implement any of those.
 
-Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. The `Length` property has an accessible setter that controls which portion of the buffer is considered "used".
+Adding functionality on top of anything already handled for you is straightforward. All the base functionality can be used to compose your own methods or just use `(Full)Memory`/`(Full)Span` to access the backing storage directly. `Start` and `End` control which portion of the buffer is considered "used"; `Length` is computed from these.
 
 &#x26A0; The above statement is true for disposal. As mentioned, `StringWeaver` does _not_ implement `IDisposable`, so derived types must do so themselves if they require it. Ensure cleanup for your own types is sound.
 

@@ -10,13 +10,9 @@ internal static class Pow2
     public static int NextPowerOf2(int n)
     {
         // Next would be 2^31 = negative
-        if (n >= 0x40000000)
+        if (n > 0x40000000)
         {
             return 0;
-        }
-        if (n == 1)
-        {
-            return 2;
         }
 
 #if NET6_0_OR_GREATER
@@ -35,13 +31,9 @@ internal static class Pow2
     public static long NextPowerOf2(long n)
     {
         // Next would be 2^63 = negative
-        if (n >= 0x4000_0000_0000_0000)
+        if (n > 0x4000_0000_0000_0000)
         {
             return 0;
-        }
-        if (n == 1)
-        {
-            return 2;
         }
 
 #if NET6_0_OR_GREATER
