@@ -9,6 +9,8 @@ A mutable string builder that lets you chain replacements, regex transforms, and
 Every `string.Replace` or `Regex.Replace` allocates a brand-new string. Chain a few together in a cleanup pipeline and you're creating dozens of throwaway copies:
 
 ```csharp
+using System.Text.RegularExpressions;
+
 // Classic approach — each call allocates a new string
 string result = input
     .Replace("\r\n", "\n")
@@ -18,9 +20,10 @@ result = Regex.Replace(result, @"\s{2,}", " ");
 result = Regex.Replace(result, @"<[^>]+>", "");
 ```
 
-StringWeaver performs all of these operations on **one buffer**. You get a single allocation at the end, when you call `ToString()`:
+StringWeaver performs all of these operations on **one buffer**. No intermediate string is created between steps — the only `string` allocation is the one `ToString()` returns:
 
 ```csharp
+using PCRE;
 using SW = StringWeaver.StringWeaver;
 
 var sw = new SW(input);       // one buffer, seeded with input
@@ -29,7 +32,7 @@ sw.ReplaceAll("\t", " ");     // in-place
 sw.Trim();                    // in-place
 sw.ReplaceAll(new PcreRegex(@"\s{2,}"), " ");
 sw.ReplaceAll(new PcreRegex(@"<[^>]+>"), "");
-string result = sw.ToString(); // single allocation
+string result = sw.ToString(); // the only string allocation
 ```
 
 This matters when you're cleaning user input, sanitizing HTML, normalizing log lines, or running any pipeline where text passes through multiple transformation steps.
@@ -74,7 +77,7 @@ Start with the default `StringWeaver`. Switch to an alternative only when profil
 | `StringWeaver` | `StringWeaver` | `char[]` (managed) | No | Default choice. |
 | `UnsafeStringWeaver` | `StringWeaver` | Unmanaged (`Marshal`) | **Yes** | Very large or very long-lived buffers; avoids GC pressure entirely. |
 | `PooledStringWeaver` | `StringWeaver.Specialized` | `ArrayPool<char>.Shared` | **Yes** | Frequent create/dispose cycles with non-trivial capacities (dozens of kB+). |
-| `WrappingStringWeaver` | `StringWeaver.Specialized` | Caller-provided buffer | **Yes** (if pinned) | You already own the memory and want zero-copy access to the full API. |
+| `WrappingStringWeaver` | `StringWeaver.Specialized` | Caller-provided buffer | **Yes** | You already own the memory and want zero-copy access to the full API. Disposing is required when constructed with pinned memory; always recommended otherwise. |
 
 ⚠️ Variants marked `IDisposable` **must** be disposed. Failing to do so leaks memory (or, for `PooledStringWeaver`, degrades pool performance app-wide). `WrappingStringWeaver` given a `Span<char>` or pointer requires the caller to keep the memory valid for the wrapper's lifetime.
 
